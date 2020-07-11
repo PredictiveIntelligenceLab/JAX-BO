@@ -1,5 +1,5 @@
 import jax.numpy as np
-from input_priors import uniform_prior, gaussian_prior
+from jaxbo.input_priors import uniform_prior, gaussian_prior
 
 def oakley():
     dim = 2

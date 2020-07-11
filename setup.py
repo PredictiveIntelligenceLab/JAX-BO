@@ -32,11 +32,11 @@ INSTALL_REQUIRES = [
 ]
 
 setuptools.setup(
-    name='jax-bo',
+    name='jaxbo',
     version='0.1.0',
     license='Apache 2.0',
     author='Predictive Intelligence Lab',
-    author_email='jax-md-dev@google.com',
+    author_email='pgp@seas.upenn.edu',
     install_requires=INSTALL_REQUIRES,
     url='https://github.com/PredictiveIntelligenceLab/JAX-BO',
     packages=setuptools.find_packages(),

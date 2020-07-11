@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 from matplotlib import rc
 from scipy.interpolate import griddata
 
-from models_jax import GP
-from utils import normalize
-from test_functions import *
+from jaxbo.models import GP
+from jaxbo.utils import normalize
+from jaxbo.test_functions import *
 
 onp.random.seed(1234)
 
@@ -22,7 +22,7 @@ if __name__ == "__main__":
     noise = 0.0
 
     # Define test function
-    # f, p_x, dim, lb, ub = oakley()
+    f, p_x, dim, lb, ub = oakley()
     # f, p_x, dim, lb, ub = michalewicz(2)
     # f, p_x, dim, lb, ub = rosenbrock()
     # f, p_x, dim, lb, ub = ursem_waves()
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     # f, p_x, dim, lb, ub = hartmann6()
     # f, p_x, dim, lb, ub = bukin()
     # f, p_x, dim, lb, ub = branin()
-    f, p_x, dim, lb, ub = modified_branin()
+    # f, p_x, dim, lb, ub = modified_branin()
     # f, p_x, dim, lb, ub = ackley(2)
     # f, p_x, dim, lb, ub = bird()
 
