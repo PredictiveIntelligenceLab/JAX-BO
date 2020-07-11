@@ -75,6 +75,26 @@ def branin():
         return y
     return f, p_x, dim, lb, ub
 
+def modified_branin():
+    dim = 2
+    lb = np.array([-5.0, 0.0])
+    ub = np.array([10.0, 15.0])
+    p_x = uniform_prior(lb, ub)
+    def f(x):
+        a = 1.0
+        b = 5.1 / (4*np.pi**2)
+        c = 5 / np.pi
+        r = 6
+        s = 10
+        t = 1 / (8*np.pi)
+        x1, x2 = x[0], x[1]
+        f1 = a * (x2 - b*x1**2 + c*x1 -r)**2
+        f2 = s * (1-t) * np.cos(x1) * np.cos(x2)
+        f3 = np.log(x1**2 + x2**2 + 1)
+        y = -1/(f1+f2+f3+s)
+        return y
+    return f, p_x, dim, lb, ub
+
 def ursem_waves():
     dim = 2
     lb = np.array([-0.9, -1.2])
