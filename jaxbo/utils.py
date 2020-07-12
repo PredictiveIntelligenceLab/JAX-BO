@@ -1,6 +1,9 @@
 import numpy as onp
 import jax.numpy as np
 from jax import jit, vmap
+from jax.experimental import stax
+from jax.experimental.stax import Dense, Tanh
+from jax.nn.initializers import glorot_normal, normal
 from jax.scipy.stats import multivariate_normal
 from KDEpy import FFTKDE
 from scipy.interpolate import interp1d
@@ -61,3 +64,17 @@ def fit_kernel_density(X, xi):
     # Evaluate the weights on the input data
     pdf = interp1d_fun(xi)
     return np.clip(pdf, a_min=0.0) + 1e-8
+
+def init_NN(Q):
+    layers = []
+    num_layers = len(Q)
+    for i in range(0, num_layers-2):
+        layers.append(Dense(Q[i+1],
+                            W_init=glorot_normal(dtype=np.float64),
+                            b_init=normal(dtype=np.float64)))
+        layers.append(Tanh)
+    layers.append(Dense(Q[-1],
+                  W_init=glorot_normal(dtype=np.float64),
+                  b_init=normal(dtype=np.float64)))
+    net_init, net_apply = stax.serial(*layers)
+    return net_init, net_apply
