@@ -13,7 +13,7 @@ def oakley():
         return 5.0 + x[0] + x[1] + 2.0*np.cos(x[0]) + 2.0*np.sin(x[1])
     return f, p_x, dim, lb, ub
 
-def michalewicz(dim):
+def michalewicz(dim=2):
     lb = 0.0*np.ones(dim)
     ub = np.pi*np.ones(dim)
     p_x = gaussian_prior(np.zeros(dim) + 0.5*np.pi, 0.1*np.eye(dim))
