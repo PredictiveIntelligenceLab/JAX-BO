@@ -17,6 +17,23 @@ def normalize(X, y):
     return batch, norm_const
 
 @jit
+def normalize_multifidelity(XL, yL, XH, yH):
+    X = np.concatenate([XL, XH], axis = 0)
+    y = np.concatenate([yL, yH], axis = 0)
+    mu_X, sigma_X = X.mean(0), X.std(0)
+    mu_y, sigma_y = y.mean(0), y.std(0)
+    XL = (XL - mu_X)/sigma_X
+    XH = (XH - mu_X)/sigma_X
+    yL = (yL - mu_y)/sigma_y
+    yH = (yH - mu_y)/sigma_y
+    y = (y - mu_y)/sigma_y
+    batch = {'XL': XL, 'XH': XH, 'y': y, 'yL': yL, 'yH': yH}
+    norm_const = {'mu_X': mu_X, 'sigma_X': sigma_X,
+                  'mu_y': mu_y, 'sigma_y': sigma_y}
+    return batch, norm_const
+
+
+@jit
 def compute_w_gmm(x, bounds, gmm_vars):
     lb = bounds['lb']
     ub = bounds['ub']

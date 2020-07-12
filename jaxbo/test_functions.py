@@ -152,3 +152,18 @@ def hartmann6():
         y = -np.dot(alpha, np.diag(np.exp(-arg)))
         return y
     return f, p_x, dim, lb, ub
+
+def forrester():
+    dim = 1
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f_H(x):
+        x = x.flatten()
+        y = (6.0*x-2.0)**2 * np.sin(12.0*x-4.0)
+        return y[0]
+    def f_L(x):
+        x = x.flatten()
+        y = 0.5*f_H(x) + 10.0*(x-0.5) - 5.0
+        return y[0]
+    return (f_L, f_H), p_x, dim, lb, ub
