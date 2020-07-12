@@ -25,7 +25,7 @@ def michalewicz(dim=2):
         return -y
     return f, p_x, dim, lb, ub
 
-def ackley(dim):
+def ackley(dim=2):
     lb = -32.768*np.ones(dim)
     ub = 32.768*np.ones(dim)
     p_x = uniform_prior(lb, ub)

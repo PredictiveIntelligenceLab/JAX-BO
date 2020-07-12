@@ -21,3 +21,11 @@ def random_init_MultifidelityGP(rng_key, dim):
                           logsigma_fH, loglength_H,
                           rho, logsigma_nL, logsigma_nH])
     return hyp
+
+def random_init_GradientGP(rng_key, dim):
+    logsigma_f = np.log(4.0*random.uniform(rng_key, (1,)))
+    loglength  = np.log(4.0*random.uniform(rng_key, (dim,)))
+    logsigma_n_F = np.array([-4.0]) + random.normal(rng_key, (1,))
+    logsigma_n_G = np.array([-4.0]) + random.normal(rng_key, (1,))
+    hyp = np.concatenate([logsigma_f, loglength, logsigma_n_F, logsigma_n_G])
+    return hyp

@@ -17,7 +17,7 @@ def normalize(X, y):
     return batch, norm_const
 
 @jit
-def normalize_multifidelity(XL, yL, XH, yH):
+def normalize_MultifidelityGP(XL, yL, XH, yH):
     X = np.concatenate([XL, XH], axis = 0)
     y = np.concatenate([yL, yH], axis = 0)
     mu_X, sigma_X = X.mean(0), X.std(0)
@@ -30,6 +30,14 @@ def normalize_multifidelity(XL, yL, XH, yH):
     batch = {'XL': XL, 'XH': XH, 'y': y, 'yL': yL, 'yH': yH}
     norm_const = {'mu_X': mu_X, 'sigma_X': sigma_X,
                   'mu_y': mu_y, 'sigma_y': sigma_y}
+    return batch, norm_const
+
+@jit
+def normalize_GradientGP(XF, yF, XG, yG):
+    y = np.concatenate([yF, yG], axis = 0)
+    batch = {'XF': XF, 'XG': XG, 'yF': yF, 'yG': yG, 'y': y}
+    norm_const = {'mu_X': 0.0, 'sigma_X': 1.0,
+                  'mu_y': 0.0, 'sigma_y': 1.0}
     return batch, norm_const
 
 
