@@ -167,3 +167,12 @@ def forrester():
         y = 0.5*f_H(x) + 10.0*(x-0.5) - 5.0
         return y[0]
     return (f_L, f_H), p_x, dim, lb, ub
+
+def step_function():
+    dim = 1
+    lb = -np.ones(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f(x):
+        return np.heaviside(x, 0.5)[0]
+    return f, p_x, dim, lb, ub
