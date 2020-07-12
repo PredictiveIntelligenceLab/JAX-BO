@@ -1,0 +1,28 @@
+Metadata-Version: 2.1
+Name: jaxbo
+Version: 0.1.0
+Summary: Bayesian optimization in JAX
+Home-page: https://github.com/PredictiveIntelligenceLab/JAX-BO
+Author: Predictive Intelligence Lab
+Author-email: pgp@seas.upenn.edu
+License: Apache 2.0
+Download-URL: https://github.com/PredictiveIntelligenceLab/JAX-BO
+Project-URL: Source Code, https://github.com/PredictiveIntelligenceLab/JAX-BO
+Project-URL: Documentation, https://github.com/PredictiveIntelligenceLab/JAX-BO
+Project-URL: Bug Tracker, https://github.com/PredictiveIntelligenceLab/JAX-BO/issues
+Description: # Bayesian optimization in JAX
+        
+        [Get started with a tutorial](https://github.com/PredictiveIntelligenceLab/JAX-BO/blob/master/examples/intro_tutorial.ipynb)
+        
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: MacOS
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Topic :: Software Development
+Classifier: Topic :: Scientific/Engineering
+Classifier: Intended Audience :: Science/Research
+Classifier: Intended Audience :: Developers
+Requires-Python: >=2.7
+Description-Content-Type: text/markdown
