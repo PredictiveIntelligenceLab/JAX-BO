@@ -18,12 +18,15 @@ class GPmodel():
     def __init__(self, options):
         # Initialize the class
         self.options = options
+        self.input_prior = options['input_prior']
         if options['kernel'] == 'RBF':
             self.kernel = kernels.RBF
         elif options['kernel'] == 'Matern52':
             self.kernel = kernels.Matern52
         elif options['kernel'] == 'Matern32':
             self.kernel = kernels.Matern32
+        elif options['kernel'] == None:
+            self.kernel = kernels.RBF
         else:
             raise NotImplementedError
 
@@ -46,25 +49,20 @@ class GPmodel():
         grads = f_vjp(np.ones_like(primals))[0]
         return primals, grads
 
-    def fit_gmm(self, *args, num_comp = 2, N_samples = 10000):
-        params, batch, norm_const, bounds, input_prior, rng_key = args
+    def fit_gmm(self, num_comp = 2, N_samples = 10000, **kwargs):
+        bounds = kwargs['bounds']
+        rng_key = kwargs['rng_key']
         lb = bounds['lb']
         ub = bounds['ub']
         dim = lb.shape[0]
         # Sample data across the entire domain
         X = lb + (ub-lb)*lhs(dim, N_samples)
-        y = self.predict(X,
-                         params,
-                         batch,
-                         norm_const)[0]
+        y = self.predict(X, **kwargs)[0]
         # Sample data according to prior
-        X_samples = input_prior.sample(rng_key, N_samples)
-        y_samples = self.predict(X_samples,
-                                 params,
-                                 batch,
-                                 norm_const)[0]
+        X_samples = self.input_prior.sample(rng_key, N_samples)
+        y_samples = self.predict(X_samples, **kwargs)[0]
         # Compute p_x and p_y from samples across the entire domain
-        p_x = input_prior.pdf(X)
+        p_x = self.input_prior.pdf(X)
         p_y = utils.fit_kernel_density(y_samples, y)
         weights = p_x/p_y
         # Label each input data
@@ -85,15 +83,11 @@ class GPmodel():
         return clf.weights_, clf.means_, clf.covariances_
 
     @partial(jit, static_argnums=(0,))
-    def acquisition(self, x, *args):
-        params, batch, norm_const, bounds, gmm_vars = args
+    def acquisition(self, x, **kwargs):
         x = x[None,:]
-        mean, std = self.predict(x,
-                                 params,
-                                 batch,
-                                 norm_const)
+        mean, std = self.predict(x, **kwargs)
         if self.options['criterion'] == 'LW-LCB':
-            weights = utils.compute_w_gmm(x, bounds, gmm_vars)
+            weights = utils.compute_w_gmm(x, **kwargs)
             return acquisitions.LW_LCB(mean, std, weights, kappa = self.options['kappa'])
         elif self.options['criterion'] == 'LCB':
             return acquisitions.LCB(mean, std, kappa = self.options['kappa'])
@@ -103,28 +97,28 @@ class GPmodel():
         elif self.options['criterion'] == 'US':
             return acquisitions.US(std)
         elif self.options['criterion'] == 'LW-US':
-            weights = utils.compute_w_gmm(x, bounds, gmm_vars)
+            weights = utils.compute_w_gmm(x, **kwargs)
             return acquisitions.LW_US(std, weights)
         else:
             raise NotImplementedError
 
     @partial(jit, static_argnums=(0,))
-    def acq_value_and_grad(self, x, *args):
-        fun = lambda x: self.acquisition(x, *args)
+    def acq_value_and_grad(self, x, **kwargs):
+        fun = lambda x: self.acquisition(x, **kwargs)
         primals, f_vjp = vjp(fun, x)
         grads = f_vjp(np.ones_like(primals))[0]
         return primals, grads
 
-    def compute_next_point(self, *args, num_restarts = 10):
-        params, batch, norm_const, bounds, gmm_vars = args
+    def compute_next_point(self, num_restarts = 10, **kwargs):
         # Define objective that returns NumPy arrays
         def objective(x):
-            value, grads = self.acq_value_and_grad(x, *args)
+            value, grads = self.acq_value_and_grad(x, **kwargs)
             out = (onp.array(value), onp.array(grads))
             return out
         # Optimize with random restarts
         loc = []
         acq = []
+        bounds = kwargs['bounds']
         lb = bounds['lb']
         ub = bounds['ub']
         dim = lb.shape[0]
@@ -182,8 +176,10 @@ class GP(GPmodel):
         return best_params
 
     @partial(jit, static_argnums=(0,))
-    def predict(self, X_star, *args):
-        params, batch, norm_const = args
+    def predict(self, X_star, **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        norm_const = kwargs['norm_const']
         # Normalize
         X_star = (X_star - norm_const['mu_X'])/norm_const['sigma_X']
         # Fetch training data
@@ -263,8 +259,10 @@ class ManifoldGP(GPmodel):
         return best_params
 
     @partial(jit, static_argnums=(0,))
-    def predict(self, X_star, *args):
-        params, batch, norm_const = args
+    def predict(self, X_star, **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        norm_const = kwargs['norm_const']
         # Normalize
         X_star = (X_star - norm_const['mu_X'])/norm_const['sigma_X']
         # Fetch training data
@@ -343,8 +341,10 @@ class MultifidelityGP(GPmodel):
         return best_params
 
     @partial(jit, static_argnums=(0,))
-    def predict(self, X_star, *args):
-        params, batch, norm_const = args
+    def predict(self, X_star, **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        norm_const = kwargs['norm_const']
         # Normalize
         X_star = (X_star - norm_const['mu_X'])/norm_const['sigma_X']
         # Fetch training data
@@ -435,8 +435,10 @@ class GradientGP(GPmodel):
         return best_params
 
     @partial(jit, static_argnums=(0,))
-    def predict(self, X_star, *args):
-        params, batch, norm_const = args
+    def predict(self, X_star, **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        norm_const = kwargs['norm_const']
         # Normalize
         X_star = (X_star - norm_const['mu_X'])/norm_const['sigma_X']
         # Fetch training data

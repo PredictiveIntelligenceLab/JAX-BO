@@ -45,11 +45,12 @@ def normalize_GradientGP(XF, yF, XG, yG):
 
 
 @jit
-def compute_w_gmm(x, bounds, gmm_vars):
+def compute_w_gmm(x, **kwargs):
+    bounds = kwargs['bounds']
     lb = bounds['lb']
     ub = bounds['ub']
     x = (x - lb) / (ub - lb)
-    weights, means, covs = gmm_vars
+    weights, means, covs = kwargs['gmm_vars']
     gmm_mode = lambda w, mu, cov:  w*multivariate_normal.pdf(x, mu, cov)
     w = np.sum(vmap(gmm_mode)(weights, means, covs), axis = 0)
     return w
