@@ -17,7 +17,6 @@ def EI(mean, std, best):
 
 @jit
 def LCB(mean, std, kappa = 2.0):
-    mean, std = args
     lcb = mean - kappa*std
     return lcb[0]
 

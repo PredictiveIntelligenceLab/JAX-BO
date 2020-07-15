@@ -92,6 +92,7 @@ class GPmodel():
         elif self.options['criterion'] == 'LCB':
             return acquisitions.LCB(mean, std, kappa = self.options['kappa'])
         elif self.options['criterion'] == 'EI':
+            batch = kwargs['batch']
             best = np.min(batch['y'])
             return acquisitions.EI(mean, std, best)
         elif self.options['criterion'] == 'US':
