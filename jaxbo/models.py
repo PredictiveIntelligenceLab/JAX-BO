@@ -68,7 +68,7 @@ class GPmodel():
         weights = p_x/p_y
         # Label each input data
         indices = np.arange(N_samples)
-        # Scale inputs data to [0, 1]^D
+        # Scale inputs to [0, 1]^D
         X = (X - lb) / (ub - lb)
         # rescale weights as probability distribution
         weights = weights / np.sum(weights)
@@ -181,10 +181,11 @@ class GP(GPmodel):
     def predict(self, X_star, **kwargs):
         params = kwargs['params']
         batch = kwargs['batch']
+        bounds = kwargs['bounds']
         norm_const = kwargs['norm_const']
-        # Normalize
-        X_star = (X_star - norm_const['mu_X'])/norm_const['sigma_X']
-        # Fetch training data
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
         X, y = batch['X'], batch['y']
         # Fetch params
         sigma_n = np.exp(params[-1])
@@ -264,10 +265,11 @@ class ManifoldGP(GPmodel):
     def predict(self, X_star, **kwargs):
         params = kwargs['params']
         batch = kwargs['batch']
+        bounds = kwargs['bounds']
         norm_const = kwargs['norm_const']
-        # Normalize
-        X_star = (X_star - norm_const['mu_X'])/norm_const['sigma_X']
-        # Fetch training data
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
         X, y = batch['X'], batch['y']
         # Warp inputs
         gp_params = params[self.gp_params_ids]
@@ -346,10 +348,11 @@ class MultifidelityGP(GPmodel):
     def predict(self, X_star, **kwargs):
         params = kwargs['params']
         batch = kwargs['batch']
+        bounds = kwargs['bounds']
         norm_const = kwargs['norm_const']
-        # Normalize
-        X_star = (X_star - norm_const['mu_X'])/norm_const['sigma_X']
-        # Fetch training data
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
         XL, XH = batch['XL'], batch['XH']
         D = batch['XH'].shape[1]
         y = batch['y']
@@ -441,8 +444,8 @@ class GradientGP(GPmodel):
         params = kwargs['params']
         batch = kwargs['batch']
         norm_const = kwargs['norm_const']
-        # Normalize
-        X_star = (X_star - norm_const['mu_X'])/norm_const['sigma_X']
+        # (do not Normalize!)
+        # X_star = (X_star - norm_const['mu_X'])/norm_const['sigma_X']
         # Fetch training data
         XF, XG = batch['XF'], batch['XG']
         y = batch['y']
@@ -487,10 +490,10 @@ class HeterogeneousMultifidelityGP(GPmodel):
         XL, XH = batch['XL'], batch['XH']
         NL, NH = XL.shape[0], XH.shape[0]
         D = XH.shape[1]
-        # Warp low-fidelity inputs, scale to [lb,ub] and normalize
+        # Warp low-fidelity inputs to [0,1]^D_H
         gp_params = params[self.gp_params_ids]
         nn_params = self.unravel(params[self.nn_params_ids])
-        XL = self.net_apply(nn_params, XL)
+        XL = sigmoid(self.net_apply(nn_params, XL))
         # Fetch params
         rho = gp_params[-3]
         sigma_n_L = np.exp(gp_params[-2])
@@ -536,17 +539,18 @@ class HeterogeneousMultifidelityGP(GPmodel):
     def predict(self, X_star, **kwargs):
         params = kwargs['params']
         batch = kwargs['batch']
+        bounds = kwargs['bounds']
         norm_const = kwargs['norm_const']
-        # Normalize
-        X_star = (X_star - norm_const['mu_XH'])/norm_const['sigma_XH']
-        # Fetch training data
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
         XL, XH = batch['XL'], batch['XH']
         D = batch['XH'].shape[1]
         y = batch['y']
         # Warp low-fidelity inputs
         gp_params = params[self.gp_params_ids]
         nn_params = self.unravel(params[self.nn_params_ids])
-        XL = self.net_apply(nn_params, XL)
+        XL = sigmoid(self.net_apply(nn_params, XL))
         # Fetch params
         rho = gp_params[-3]
         sigma_n_L = np.exp(gp_params[-2])

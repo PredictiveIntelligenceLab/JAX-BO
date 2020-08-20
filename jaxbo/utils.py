@@ -8,8 +8,55 @@ from jax.scipy.stats import multivariate_normal
 from KDEpy import FFTKDE
 from scipy.interpolate import interp1d
 
+
 @jit
-def normalize(X, y):
+def normalize(X, y, bounds):
+    mu_y, sigma_y = y.mean(0), y.std(0)
+    X = (X - bounds['lb'])/(bounds['ub']-bounds['lb'])
+    y = (y - mu_y)/sigma_y
+    batch = {'X': X, 'y': y}
+    norm_const = {'mu_y': mu_y, 'sigma_y': sigma_y}
+    return batch, norm_const
+
+@jit
+def normalize_MultifidelityGP(XL, yL, XH, yH, bounds):
+    y = np.concatenate([yL, yH], axis = 0)
+    mu_y, sigma_y = y.mean(0), y.std(0)
+    XL = (XL - bounds['lb'])/(bounds['ub']-bounds['lb'])
+    XH = (XH - bounds['lb'])/(bounds['ub']-bounds['lb'])
+    yL = (yL - mu_y)/sigma_y
+    yH = (yH - mu_y)/sigma_y
+    y = (y - mu_y)/sigma_y
+    batch = {'XL': XL, 'XH': XH, 'y': y, 'yL': yL, 'yH': yH}
+    norm_const = {'mu_y': mu_y, 'sigma_y': sigma_y}
+    return batch, norm_const
+
+@jit
+def normalize_GradientGP(XF, yF, XG, yG):
+    y = np.concatenate([yF, yG], axis = 0)
+    batch = {'XF': XF, 'XG': XG, 'yF': yF, 'yG': yG, 'y': y}
+    norm_const = {'mu_X': 0.0, 'sigma_X': 1.0,
+                  'mu_y': 0.0, 'sigma_y': 1.0}
+    return batch, norm_const
+
+
+@jit
+def normalize_HeterogeneousMultifidelityGP(XL, yL, XH, yH, bounds):
+    y = np.concatenate([yL, yH], axis = 0)
+    mu_X, sigma_X = XL.mean(0), XL.std(0)
+    mu_y, sigma_y = y.mean(0), y.std(0)
+    XL = (XL - mu_X)/sigma_X
+    XH = (XH - bounds['lb'])/(bounds['ub']-bounds['lb'])
+    yL = (yL - mu_y)/sigma_y
+    yH = (yH - mu_y)/sigma_y
+    y = (y - mu_y)/sigma_y
+    batch = {'XL': XL, 'XH': XH, 'y': y, 'yL': yL, 'yH': yH}
+    norm_const = {'mu_X': mu_X, 'sigma_X': sigma_X,
+                  'mu_y': mu_y, 'sigma_y': sigma_y}
+    return batch, norm_const
+
+@jit
+def standardize(X, y):
     mu_X, sigma_X = X.mean(0), X.std(0)
     mu_y, sigma_y = y.mean(0), y.std(0)
     X = (X - mu_X)/sigma_X
@@ -19,8 +66,9 @@ def normalize(X, y):
                   'mu_y': mu_y, 'sigma_y': sigma_y}
     return batch, norm_const
 
+
 @jit
-def normalize_MultifidelityGP(XL, yL, XH, yH):
+def standardize_MultifidelityGP(XL, yL, XH, yH):
     X = np.concatenate([XL, XH], axis = 0)
     y = np.concatenate([yL, yH], axis = 0)
     mu_X, sigma_X = X.mean(0), X.std(0)
@@ -36,30 +84,21 @@ def normalize_MultifidelityGP(XL, yL, XH, yH):
     return batch, norm_const
 
 @jit
-def normalize_HeterogeneousMultifidelityGP(XL, yL, XH, yH):
+def standardize_HeterogeneousMultifidelityGP(XL, yL, XH, yH):
     y = np.concatenate([yL, yH], axis = 0)
     mu_XL, sigma_XL = XL.mean(0), XL.std(0)
-    mu_XH, sigma_XH = XH.mean(0), XH.std(0)
+    min_XH, max_XH = XH.min(0), XH.max(0)
     mu_y, sigma_y = y.mean(0), y.std(0)
     XL = (XL - mu_XL)/sigma_XL
-    XH = (XH - mu_XH)/sigma_XH
+    XH = (XH - min_XH)/(max_XH-min_XH)
     yL = (yL - mu_y)/sigma_y
     yH = (yH - mu_y)/sigma_y
     y = (y - mu_y)/sigma_y
     batch = {'XL': XL, 'XH': XH, 'y': y, 'yL': yL, 'yH': yH}
     norm_const = {'mu_XL': mu_XL, 'sigma_XL': sigma_XL,
-                  'mu_XH': mu_XH, 'sigma_XH': sigma_XH,
+                  'min_XH': min_XH, 'max_XH': max_XH,
                   'mu_y': mu_y, 'sigma_y': sigma_y}
     return batch, norm_const
-
-@jit
-def normalize_GradientGP(XF, yF, XG, yG):
-    y = np.concatenate([yF, yG], axis = 0)
-    batch = {'XF': XF, 'XG': XG, 'yF': yF, 'yG': yG, 'y': y}
-    norm_const = {'mu_X': 0.0, 'sigma_X': 1.0,
-                  'mu_y': 0.0, 'sigma_y': 1.0}
-    return batch, norm_const
-
 
 @jit
 def compute_w_gmm(x, **kwargs):
