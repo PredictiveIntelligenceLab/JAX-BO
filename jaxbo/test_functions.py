@@ -196,3 +196,98 @@ def multifidelity_branin():
         y = 0.5*f_H(x) + 10.0*(np.sum(x)-0.5) - 5.0
         return y
     return (f_L, f_H), p_x, dim, lb, ub
+
+
+def singlefidelity_branin():
+    dim = 2
+    lb = np.array([-5.0, 0.0])
+    ub = np.array([10.0, 15.0])
+    p_x = uniform_prior(lb, ub)
+    def f_H(x):
+        a = 1.0
+        b = 5.1 / (4*np.pi**2)
+        c = 5 / np.pi
+        r = 6
+        s = 10
+        t = 1 / (8*np.pi)
+        x1, x2 = x[0], x[1]
+        y = a * (x2 - b*x1**2 + c*x1 -r)**2 + s * (1-t) * np.cos(x1) + s
+        return y
+
+    return f_H, p_x, dim, lb, ub
+
+
+def multifidelity_camelback():
+    dim = 2
+    lb = np.array([-2.0, -1.0])
+    ub = np.array([2.0, 1.0])
+    p_x = uniform_prior(lb, ub)
+    def f_H(x):
+        x1, x2 = x[0], x[1]
+        y = (4.0 - 2.1*x1**2 + x1**4/3.)*x1**2 + x1*x2 + (-4. + 4.*x2**2)*x2**2 
+        return y
+    def f_L(x):
+        x1, x2 = x[0] + 0.1, x[1] - 0.1
+        z = (4.0 - 2.1*x1**2 + x1**4/3.)*x1**2 + x1*x2 + (-4. + 4.*x2**2)*x2**2
+        y = 0.75*f_H(x) + 0.375*z - 0.125
+        return y
+    return (f_L, f_H), p_x, dim, lb, ub
+
+
+def singlefidelity_camelback():
+    dim = 2
+    lb = np.array([-2.0, -1.0])
+    ub = np.array([2.0, 1.0])
+    p_x = uniform_prior(lb, ub)
+    def f_H(x):
+        x1, x2 = x[0], x[1]
+        y = (4.0 - 2.1*x1**2 + x1**4/3.)*x1**2 + x1*x2 + (-4. + 4.*x2**2)*x2**2 
+        return y
+    return f_H, p_x, dim, lb, ub
+
+
+def multifidelity_hartmann6():
+    dim = 6
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f_H(x):
+        alpha = np.array([1.0, 1.2, 3.0, 3.2])
+        A = np.array([[10, 3, 17, 3.5, 1.7, 8],
+                      [0.05, 10, 17, 0.1, 8, 14],
+                      [3, 3.5, 1.7, 10, 17, 8],
+                      [17, 8, 0.05, 10, 0.1, 14]])
+        P = 1e-4 * np.array([[1312, 1696, 5569, 124, 8283, 5886],
+                             [2329, 4135, 8307, 3736, 1004, 9991],
+                             [2348, 1451, 3522, 2883, 3047, 6650],
+                             [4047, 8828, 8732, 5743, 1091, 381]])
+        arg = np.dot(A, (x-P).T**2)
+        y = -np.dot(alpha, np.diag(np.exp(-arg)))
+        return y
+    def f_L(x):
+        x1, x2 = x[0:3], x[3:6]
+        y = 0.5*f_H(x) + 5.*np.sum(x1) - 2.*np.sum(x2) - 0.5
+        return y
+
+    return (f_L, f_H), p_x, dim, lb, ub
+
+
+def singlefidelity_hartmann6():
+    dim = 6
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f(x):
+        alpha = np.array([1.0, 1.2, 3.0, 3.2])
+        A = np.array([[10, 3, 17, 3.5, 1.7, 8],
+                      [0.05, 10, 17, 0.1, 8, 14],
+                      [3, 3.5, 1.7, 10, 17, 8],
+                      [17, 8, 0.05, 10, 0.1, 14]])
+        P = 1e-4 * np.array([[1312, 1696, 5569, 124, 8283, 5886],
+                             [2329, 4135, 8307, 3736, 1004, 9991],
+                             [2348, 1451, 3522, 2883, 3047, 6650],
+                             [4047, 8828, 8732, 5743, 1091, 381]])
+        arg = np.dot(A, (x-P).T**2)
+        y = -np.dot(alpha, np.diag(np.exp(-arg)))
+        return y
+    return f, p_x, dim, lb, ub

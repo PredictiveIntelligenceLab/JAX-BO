@@ -8,6 +8,7 @@ from jax.scipy.stats import multivariate_normal
 from KDEpy import FFTKDE
 from scipy.interpolate import interp1d
 
+from scipy.stats import gaussian_kde
 
 @jit
 def normalize(X, y, bounds):
@@ -111,13 +112,30 @@ def compute_w_gmm(x, **kwargs):
     w = np.sum(vmap(gmm_mode)(weights, means, covs), axis = 0)
     return w
 
-def fit_kernel_density(X, xi):
-    kde_pdf_x, kde_pdf_y  = FFTKDE().fit(onp.array(X)).evaluate()
+def fit_kernel_density(X, xi, weights = None, bw=None):
+#    kde_pdf_x, kde_pdf_y  = FFTKDE().fit(onp.array(X)).evaluate()
+
+    X, weights = onp.array(X), onp.array(weights)
+    X = X.flatten()
+    if bw is None:
+        try:
+            sc = gaussian_kde(X, weights=weights)
+            bw = onp.sqrt(sc.covariance).flatten()
+        except:
+            bw = 1.0
+        if bw < 1e-8:
+            bw = 1.0
+
+    bw = 1.0
+
+    kde_pdf_x, kde_pdf_y = FFTKDE(bw=bw).fit(X, weights).evaluate()
+    
     # Define the interpolation function
     interp1d_fun = interp1d(kde_pdf_x,
                             kde_pdf_y,
                             kind = 'linear',
                             fill_value = 'extrapolate')
+
     # Evaluate the weights on the input data
     pdf = interp1d_fun(xi)
     return np.clip(pdf, a_min=0.0) + 1e-8
