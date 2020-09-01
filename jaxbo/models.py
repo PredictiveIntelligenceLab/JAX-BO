@@ -176,7 +176,10 @@ class GP(GPmodel):
             likelihood.append(val)
         params = np.vstack(params)
         likelihood = np.vstack(likelihood)
-        idx_best = np.argmin(likelihood)
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
 
         return best_params
@@ -261,8 +264,12 @@ class ManifoldGP(GPmodel):
             likelihood.append(val)
         params = np.vstack(params)
         likelihood = np.vstack(likelihood)
-        idx_best = np.argmin(likelihood)
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
+        
         return best_params
 
     @partial(jit, static_argnums=(0,))
@@ -344,8 +351,12 @@ class MultifidelityGP(GPmodel):
             likelihood.append(val)
         params = np.vstack(params)
         likelihood = np.vstack(likelihood)
-        idx_best = np.argmin(likelihood)
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
+
         return best_params
 
     @partial(jit, static_argnums=(0,))
@@ -439,7 +450,11 @@ class GradientGP(GPmodel):
             likelihood.append(val)
         params = np.vstack(params)
         likelihood = np.vstack(likelihood)
-        idx_best = np.argmin(likelihood)
+
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
         return best_params
 
