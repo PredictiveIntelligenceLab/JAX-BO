@@ -29,6 +29,7 @@ INSTALL_REQUIRES = [
     'sklearn',
     'KDEpy',
     'pyDOE',
+    'numpyro'
 ]
 
 setuptools.setup(
