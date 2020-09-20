@@ -168,22 +168,6 @@ def forrester():
         return y[0]
     return (f_L, f_H), p_x, dim, lb, ub
 
-# def heterogeneous_forrester():
-#     dim = 2
-#     lb = np.array([0.0, -np.pi/8.0])
-#     ub = np.array([1.0,  np.pi/8.0])
-#     p_x = uniform_prior(lb, ub)
-#     def f_H(x):
-#         x = x.flatten()
-#         y = (6.0*x-2.0)**2 * np.sin(12.0*x-4.0)
-#         return y[0]
-#     def f_L(x):
-#         x1, x2 = x[0], x[1]
-#         z = x1*(np.sin(x2) + np.cos(x2))
-#         y = 0.5*f_H(z) + 10.0*(z-0.5) - 5.0
-#         return y[0]
-#     return (f_L, f_H), p_x, dim, lb, ub
-
 def step_function():
     dim = 1
     lb = -np.ones(dim)
@@ -259,7 +243,97 @@ def singlefidelity_camelback():
         x1, x2 = x[0], x[1]
         y = (4.0 - 2.1*x1**2 + x1**4/3.)*x1**2 + x1*x2 + (-4. + 4.*x2**2)*x2**2 
         return y
+        
     return f_H, p_x, dim, lb, ub
+
+
+
+def multifidelity_singer_cox():
+    dim = 4
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f_H(x):
+        x1, x2, x3, x4 = x[0], x[1], x[2], x[3]
+        y = 1/2.*(np.sqrt(x1**2 + (x2 + x3**2)*x4) - x1) + (x1 + 3*x4)*np.exp(1 + np.sin(x3))
+        return -y  # maximize y -- > minimize -y
+    def f_L(x):
+        x1, x2, x3, x4 = x[0], x[1], x[2], x[3]
+        y = (1 + np.sin(x1)/10.) * (-f_H(x)) - 2*x1**2 + x2**2 + x3**2 + 0.5
+        return -y 
+
+    return (f_L, f_H), p_x, dim, lb, ub
+
+
+def singlefidelity_singer_cox():
+    dim = 4
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f(x):
+        x1, x2, x3, x4 = x[0], x[1], x[2], x[3]
+        y = 1/2.*(np.sqrt(x1**2 + (x2 + x3**2)*x4) - x1) + (x1 + 3*x4)*np.exp(1 + np.sin(x3))
+        return -y  # maximize y -- > minimize -y
+    return f, p_x, dim, lb, ub
+
+
+def multifidelity_hartmann3():
+    dim = 3
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f_H(x):
+        alpha = np.array([1.0, 1.2, 3.0, 3.2])
+        A = np.array([[3, 10, 30],
+                      [0.1, 10, 35],
+                      [3, 10, 30],
+                      [0.1, 10, 35]])
+        P = 1e-4 * np.array([[3689, 1170, 2673],
+                             [4699, 4387, 7470],
+                             [1091, 8732, 5547],
+                             [381, 5743, 8828]])
+        arg = np.dot(A, (x-P).T**2)
+        y = -np.dot(alpha, np.diag(np.exp(-arg)))
+        return y
+    def f_L(x):
+        alpha = np.array([1.0, 1.2, 3.0, 3.2])
+        delta = np.array([0.01, -0.01, -0.1, 0.1])
+        alpha2 = alpha + (3 - 2) * delta
+        A = np.array([[3, 10, 30],
+                      [0.1, 10, 35],
+                      [3, 10, 30],
+                      [0.1, 10, 35]])
+        P = 1e-4 * np.array([[3689, 1170, 2673],
+                             [4699, 4387, 7470],
+                             [1091, 8732, 5547],
+                             [381, 5743, 8828]])
+        arg = np.dot(A, (x-P).T**2)
+        y = -np.dot(alpha2, np.diag(np.exp(-arg)))
+        return y
+
+    return (f_L, f_H), p_x, dim, lb, ub
+
+
+def singlefidelity_hartmann3():
+    dim = 3
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f(x):
+        alpha = np.array([1.0, 1.2, 3.0, 3.2])
+        A = np.array([[3, 10, 30],
+                      [0.1, 10, 35],
+                      [3, 10, 30],
+                      [0.1, 10, 35]])
+        P = 1e-4 * np.array([[3689, 1170, 2673],
+                             [4699, 4387, 7470],
+                             [1091, 8732, 5547],
+                             [381, 5743, 8828]])
+        arg = np.dot(A, (x-P).T**2)
+        y = -np.dot(alpha, np.diag(np.exp(-arg)))
+        return y
+    return f, p_x, dim, lb, ub
+
 
 
 def multifidelity_hartmann6():
@@ -281,8 +355,19 @@ def multifidelity_hartmann6():
         y = -np.dot(alpha, np.diag(np.exp(-arg)))
         return y
     def f_L(x):
-        x1, x2 = x[0:3], x[3:6]
-        y = 0.5*f_H(x) + 5.*np.sum(x1) - 2.*np.sum(x2) - 0.5
+        alpha = np.array([1.0, 1.2, 3.0, 3.2])
+        delta = np.array([0.01, -0.01, -0.1, 0.1])
+        alpha2 = alpha + (3 - 2) * delta
+        A = np.array([[10, 3, 17, 3.5, 1.7, 8],
+                      [0.05, 10, 17, 0.1, 8, 14],
+                      [3, 3.5, 1.7, 10, 17, 8],
+                      [17, 8, 0.05, 10, 0.1, 14]])
+        P = 1e-4 * np.array([[1312, 1696, 5569, 124, 8283, 5886],
+                             [2329, 4135, 8307, 3736, 1004, 9991],
+                             [2348, 1451, 3522, 2883, 3047, 6650],
+                             [4047, 8828, 8732, 5743, 1091, 381]])
+        arg = np.dot(A, (x-P).T**2)
+        y = -np.dot(alpha, np.diag(np.exp(-arg)))
         return y
 
     return (f_L, f_H), p_x, dim, lb, ub
@@ -307,3 +392,40 @@ def singlefidelity_hartmann6():
         y = -np.dot(alpha, np.diag(np.exp(-arg)))
         return y
     return f, p_x, dim, lb, ub
+
+
+def multifidelity_hartmann6_levels():
+    dim = 6
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f_H(x):
+        alpha = np.array([1.0, 1.2, 3.0, 3.2])
+        A = np.array([[10, 3, 17, 3.5, 1.7, 8],
+                      [0.05, 10, 17, 0.1, 8, 14],
+                      [3, 3.5, 1.7, 10, 17, 8],
+                      [17, 8, 0.05, 10, 0.1, 14]])
+        P = 1e-4 * np.array([[1312, 1696, 5569, 124, 8283, 5886],
+                             [2329, 4135, 8307, 3736, 1004, 9991],
+                             [2348, 1451, 3522, 2883, 3047, 6650],
+                             [4047, 8828, 8732, 5743, 1091, 381]])
+        arg = np.dot(A, (x-P).T**2)
+        y = -np.dot(alpha, np.diag(np.exp(-arg)))
+        return y
+    def f_L(x, dm):
+        alpha = np.array([1.0, 1.2, 3.0, 3.2])
+        delta = np.array([0.01, -0.01, -0.1, 0.1])
+        alpha2 = alpha + dm * delta
+        A = np.array([[10, 3, 17, 3.5, 1.7, 8],
+                      [0.05, 10, 17, 0.1, 8, 14],
+                      [3, 3.5, 1.7, 10, 17, 8],
+                      [17, 8, 0.05, 10, 0.1, 14]])
+        P = 1e-4 * np.array([[1312, 1696, 5569, 124, 8283, 5886],
+                             [2329, 4135, 8307, 3736, 1004, 9991],
+                             [2348, 1451, 3522, 2883, 3047, 6650],
+                             [4047, 8828, 8732, 5743, 1091, 381]])
+        arg = np.dot(A, (x-P).T**2)
+        y = -np.dot(alpha, np.diag(np.exp(-arg)))
+        return y
+
+    return (f_L, f_H), p_x, dim, lb, ub
