@@ -1,7 +1,6 @@
 # Bayesian optimization in JAX
 
-[Get started with a tutorial](https://github.com/PredictiveIntelligenceLab/JAX-BO/blob/master/examples/bo_tutorial.ipynb)
-
+Get started with a tutorial on Google Colab:
 [![Open Demo in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1Ygp1oB5Ryo7_PmOweL38VAIsaPjw_N4g?usp=sharing)<br>
 
 To cite this repository:
