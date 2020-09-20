@@ -2,7 +2,6 @@
 import jax.numpy as np
 from jax import jit
 
-
 @jit
 def RBF(x1, x2, params):
     output_scale = np.exp(params[0])

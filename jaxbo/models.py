@@ -269,7 +269,7 @@ class ManifoldGP(GPmodel):
         idx_best = np.where(likelihood == bestlikelihood)
         idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
-        
+
         return best_params
 
     @partial(jit, static_argnums=(0,))
