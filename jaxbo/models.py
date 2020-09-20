@@ -14,6 +14,7 @@ from jaxbo.optimizers import minimize_lbfgs
 from sklearn import mixture
 from pyDOE import lhs
 
+
 # Define a general master class
 class GPmodel():
     def __init__(self, options):
@@ -60,11 +61,13 @@ class GPmodel():
         X = lb + (ub-lb)*lhs(dim, N_samples)
         y = self.predict(X, **kwargs)[0]
         # Sample data according to prior
-        X_samples = self.input_prior.sample(rng_key, N_samples)
+        X_samples = lb + (ub-lb)*lhs(dim, N_samples) # self.input_prior.sample(rng_key, N_samples)
         y_samples = self.predict(X_samples, **kwargs)[0]
         # Compute p_x and p_y from samples across the entire domain
         p_x = self.input_prior.pdf(X)
-        p_y = utils.fit_kernel_density(y_samples, y)
+        p_x_samples = self.input_prior.pdf(X_samples)
+
+        p_y = utils.fit_kernel_density(y_samples, y, weights = p_x_samples)
         weights = p_x/p_y
         # Label each input data
         indices = np.arange(N_samples)
@@ -173,8 +176,12 @@ class GP(GPmodel):
             likelihood.append(val)
         params = np.vstack(params)
         likelihood = np.vstack(likelihood)
-        idx_best = np.argmin(likelihood)
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
+
         return best_params
 
     @partial(jit, static_argnums=(0,))
@@ -257,8 +264,12 @@ class ManifoldGP(GPmodel):
             likelihood.append(val)
         params = np.vstack(params)
         likelihood = np.vstack(likelihood)
-        idx_best = np.argmin(likelihood)
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
+        
         return best_params
 
     @partial(jit, static_argnums=(0,))
@@ -340,8 +351,12 @@ class MultifidelityGP(GPmodel):
             likelihood.append(val)
         params = np.vstack(params)
         likelihood = np.vstack(likelihood)
-        idx_best = np.argmin(likelihood)
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
+
         return best_params
 
     @partial(jit, static_argnums=(0,))
@@ -435,7 +450,11 @@ class GradientGP(GPmodel):
             likelihood.append(val)
         params = np.vstack(params)
         likelihood = np.vstack(likelihood)
-        idx_best = np.argmin(likelihood)
+
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
         return best_params
 
@@ -531,8 +550,13 @@ class HeterogeneousMultifidelityGP(GPmodel):
             likelihood.append(val)
         params = np.vstack(params)
         likelihood = np.vstack(likelihood)
-        idx_best = np.argmin(likelihood)
+
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
         best_params = params[idx_best,:]
+
         return best_params
 
     @partial(jit, static_argnums=(0,))
