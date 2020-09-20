@@ -168,6 +168,77 @@ class BayesianMLP(MCMCmodel):
         sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
         return mu.flatten(), sample.flatten()
 
+# A minimal Gaussian process regression class (inherits from MCMCmodel)
+# Work in progress..
+class MissingInputsGP(MCMCmodel):
+    # Initialize the class
+    def __init__(self, options, dim_H, latent_bounds):
+        super().__init__(options)
+        self.dim_H = dim_H
+        self.latent_bounds = latent_bounds
+
+    def model(self, batch):
+        X = batch['X']
+        y = batch['y']
+        N = y.shape[0]
+        dim_X = X.shape[1]
+        dim_H = self.dim_H
+        D = dim_X + dim_H
+        # Generate latent inputs
+        H = sample('H', dist.Normal(np.zeros((N, dim_H)), np.ones((N, dim_H))))
+        X = np.concatenate([X, H], axis = 1)
+        # set uninformative log-normal priors on GP hyperparameters
+        var = sample('kernel_var', dist.LogNormal(0.0, 10.0))
+        length = sample('kernel_length', dist.LogNormal(np.zeros(D), 10.0*np.ones(D)))
+        noise = sample('noise_var', dist.LogNormal(0.0, 10.0))
+        theta = np.concatenate([np.array([var]), np.array(length)])
+        # compute kernel
+        K = self.kernel(X, X, theta) + np.eye(N)*(noise + 1e-8)
+        # sample Y according to the GP likelihood
+        sample("y", dist.MultivariateNormal(loc=np.zeros(N), covariance_matrix=K), obs=y)
+
+    @partial(jit, static_argnums=(0,))
+    def compute_cholesky(self, params, batch):
+        X = batch['X']
+        N, D = X.shape
+        # Fetch params
+        sigma_n = params[-1]
+        theta = params[:-1]
+        # Compute kernel
+        K = self.kernel(X, X, theta) + np.eye(N)*(sigma_n + 1e-8)
+        L = cholesky(K, lower=True)
+        return L
+
+    @partial(jit, static_argnums=(0,))
+    def posterior_sample(self, key, sample, X_star, **kwargs):
+        batch = kwargs['batch']
+        X, y = batch['X'], batch['y']
+        # Fetch missing inputs
+        H = sample['H']
+        X = np.concatenate([X, H], axis=1)
+        # Fetch GP params
+        var = sample['kernel_var']
+        length = sample['kernel_length']
+        noise = sample['noise_var']
+        params = np.concatenate([np.array([var]), np.array(length), np.array([noise])])
+        theta = params[:-1]
+        # Compute kernels
+        k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(noise + 1e-8)
+        k_pX = self.kernel(X_star, X, theta)
+        L = self.compute_cholesky(params, batch)
+        alpha = solve_triangular(L.T,solve_triangular(L, y, lower=True))
+        beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+        # Compute predictive mean, std
+        mu = np.matmul(k_pX, alpha)
+        cov = k_pp - np.matmul(k_pX, beta)
+        std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+        sample = mu + std * random.normal(key, mu.shape)
+        # De-normalize
+        norm_const = kwargs['norm_const']
+        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
+        sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
+        return mu, sample
+
 
 # A minimal Gaussian process regression class (inherits from MCMCmodel)
 # Work in progress..

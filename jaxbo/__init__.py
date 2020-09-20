@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from jaxbo import models
-from jaxbo import mcmc_models
 from jaxbo import input_priors
 from jaxbo import utils
 from jaxbo import test_functions
@@ -21,3 +20,4 @@ from jaxbo import kernels
 from jaxbo import initializers
 from jaxbo import optimizers
 from jaxbo import acquisitions
+# from jaxbo import mcmc_models
