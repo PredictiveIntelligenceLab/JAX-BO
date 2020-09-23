@@ -168,6 +168,20 @@ def forrester():
         return y[0]
     return (f_L, f_H), p_x, dim, lb, ub
 
+def heterogeneous_forrester():
+    dim = 2
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f_H(x):
+        x1, x2 = x[0], x[1]
+        y = (6.0*x1-2.0)**2 * np.sin(12.0*x1-4.0)
+        return y
+    def f_L(x):
+        y = 0.5*f_H(x)
+        return y
+    return (f_L, f_H), p_x, dim, lb, ub
+
 def step_function():
     dim = 1
     lb = -np.ones(dim)
@@ -224,7 +238,7 @@ def multifidelity_camelback():
     p_x = uniform_prior(lb, ub)
     def f_H(x):
         x1, x2 = x[0], x[1]
-        y = (4.0 - 2.1*x1**2 + x1**4/3.)*x1**2 + x1*x2 + (-4. + 4.*x2**2)*x2**2 
+        y = (4.0 - 2.1*x1**2 + x1**4/3.)*x1**2 + x1*x2 + (-4. + 4.*x2**2)*x2**2
         return y
     def f_L(x):
         x1, x2 = x[0] + 0.1, x[1] - 0.1
@@ -241,9 +255,9 @@ def singlefidelity_camelback():
     p_x = uniform_prior(lb, ub)
     def f_H(x):
         x1, x2 = x[0], x[1]
-        y = (4.0 - 2.1*x1**2 + x1**4/3.)*x1**2 + x1*x2 + (-4. + 4.*x2**2)*x2**2 
+        y = (4.0 - 2.1*x1**2 + x1**4/3.)*x1**2 + x1*x2 + (-4. + 4.*x2**2)*x2**2
         return y
-        
+
     return f_H, p_x, dim, lb, ub
 
 
@@ -260,7 +274,7 @@ def multifidelity_singer_cox():
     def f_L(x):
         x1, x2, x3, x4 = x[0], x[1], x[2], x[3]
         y = (1 + np.sin(x1)/10.) * (-f_H(x)) - 2*x1**2 + x2**2 + x3**2 + 0.5
-        return -y 
+        return -y
 
     return (f_L, f_H), p_x, dim, lb, ub
 
