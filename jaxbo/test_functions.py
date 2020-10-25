@@ -168,6 +168,25 @@ def forrester():
         return y[0]
     return (f_L, f_H), p_x, dim, lb, ub
 
+def jump_forrester():
+    dim = 1
+    lb = np.zeros(dim)
+    ub = np.ones(dim)
+    p_x = uniform_prior(lb, ub)
+    def f_L(x):
+        x = x.flatten()
+        y1 = (6.0*x-2.0)**2 * np.sin(12.0*x-4.0)
+        y2 = (6.0*x-2.0)**2 * np.sin(12.0*x-4.0) + 3.0
+        y = (x<0.5)*y1 + (x>0.5)*y2
+        return y[0]
+    def f_H(x):
+        x = x.flatten()
+        y1 = 2.0*f_L(x) - 20.0*x + 20.0
+        y2 = 2.0*f_L(x) - 20.0*x + 20.0 + 4.0
+        y = (x<0.5)*y1 + (x>0.5)*y2
+        return y[0]
+    return (f_L, f_H), p_x, dim, lb, ub
+
 def heterogeneous_forrester():
     dim = 2
     lb = np.zeros(dim)

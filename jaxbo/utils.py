@@ -19,6 +19,7 @@ def normalize(X, y, bounds):
     norm_const = {'mu_y': mu_y, 'sigma_y': sigma_y}
     return batch, norm_const
 
+
 @jit
 def normalize_MultifidelityGP(XL, yL, XH, yH, bounds):
     y = np.concatenate([yL, yH], axis = 0)
@@ -129,7 +130,7 @@ def fit_kernel_density(X, xi, weights = None, bw=None):
     bw = 1.0
 
     kde_pdf_x, kde_pdf_y = FFTKDE(bw=bw).fit(X, weights).evaluate()
-    
+
     # Define the interpolation function
     interp1d_fun = interp1d(kde_pdf_x,
                             kde_pdf_y,

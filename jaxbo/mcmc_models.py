@@ -7,7 +7,7 @@ from jax.scipy.special import expit as sigmoid
 from jaxbo.models import GPmodel
 import jaxbo.kernels as kernels
 
-from numpyro import sample, handlers
+from numpyro import sample, deterministic, handlers
 import numpyro.distributions as dist
 from numpyro.infer import MCMC, NUTS
 
@@ -20,7 +20,7 @@ class MCMCmodel(GPmodel):
         super().__init__(options)
 
     # helper function for doing hmc inference
-    def train(self, batch, rng_key, settings):
+    def train(self, batch, rng_key, settings, verbose = False):
         kernel = NUTS(self.model,
                       target_accept_prob = settings['target_accept_prob'])
         mcmc = MCMC(kernel,
@@ -30,7 +30,8 @@ class MCMCmodel(GPmodel):
                     progress_bar=True,
                     jit_model_args=True)
         mcmc.run(rng_key, batch)
-        # mcmc.print_summary()
+        if verbose:
+            mcmc.print_summary()
         return mcmc.get_samples()
 
     @partial(jit, static_argnums=(0,))
@@ -108,6 +109,58 @@ class GP(MCMCmodel):
         sample = mu + std * random.normal(key, mu.shape)
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
         sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
+        return mu, sample
+
+# A minimal Gaussian process regression class (inherits from MCMCmodel)
+class GPclassifier(MCMCmodel):
+    # Initialize the class
+    def __init__(self, options):
+        super().__init__(options)
+
+    def model(self, batch):
+        X = batch['X']
+        y = batch['y']
+        N, D = X.shape
+        # set uninformative log-normal priors
+        var = sample('kernel_var', dist.LogNormal(0.0, 1.0), sample_shape = (1,))
+        length = sample('kernel_length', dist.LogNormal(0.0, 1.0), sample_shape = (D,))
+        # var = sample('kernel_var', dist.HalfNormal(5.0), sample_shape = (1,))
+        # length = sample('kernel_length', dist.Gamma(2.0, 2.0), sample_shape = (D,))
+        theta = np.concatenate([var, length])
+        # compute kernel
+        K = self.kernel(X, X, theta) + np.eye(N)*1e-8
+        L = cholesky(K, lower=True)
+        # Generate latent function
+        beta = sample('beta', dist.Normal(0.0, 1.0))
+        eta = sample('eta', dist.Normal(0.0, 1.0), sample_shape=(N,))
+        f = np.matmul(L, eta) + beta
+        # Bernoulli likelihood
+        sample('y', dist.Bernoulli(logits=f), obs=y)
+
+    @partial(jit, static_argnums=(0,))
+    def posterior_sample(self, key, sample, X_star, **kwargs):
+        # Fetch training data
+        batch = kwargs['batch']
+        X, y = batch['X'], batch['y']
+        # Fetch params
+        var = sample['kernel_var']
+        length = sample['kernel_length']
+        beta = sample['beta']
+        eta = sample['eta']
+        theta = np.concatenate([var, length])
+        # Compute kernels
+        K_xx = self.kernel(X, X, theta) + np.eye(X.shape[0])*1e-8
+        k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*1e-8
+        k_pX = self.kernel(X_star, X, theta)
+        L = cholesky(K_xx, lower=True)
+        f = np.matmul(L, eta) + beta
+        tmp_1 = solve_triangular(L.T,solve_triangular(L, f, lower=True))
+        tmp_2  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+        # Compute predictive mean
+        mu = np.matmul(k_pX, tmp_1)
+        cov = k_pp - np.matmul(k_pX, tmp_2)
+        std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+        sample = mu + std * random.normal(key, mu.shape)
         return mu, sample
 
 

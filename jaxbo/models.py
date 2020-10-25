@@ -153,7 +153,7 @@ class GP(GPmodel):
         N, D = X.shape
         # Fetch params
         sigma_n = np.exp(params[-1])
-        theta = params[:-1]
+        theta = np.exp(params[:-1])
         # Compute kernel
         K = self.kernel(X, X, theta) + np.eye(N)*(sigma_n + 1e-8)
         L = cholesky(K, lower=True)
@@ -197,7 +197,7 @@ class GP(GPmodel):
         X, y = batch['X'], batch['y']
         # Fetch params
         sigma_n = np.exp(params[-1])
-        theta = params[:-1]
+        theta = np.exp(params[:-1])
         # Compute kernels
         k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(sigma_n + 1e-8)
         k_pX = self.kernel(X_star, X, theta)
@@ -238,7 +238,7 @@ class ManifoldGP(GPmodel):
         N = X.shape[0]
         # Fetch params
         sigma_n = np.exp(gp_params[-1])
-        theta = gp_params[:-1]
+        theta = np.exp(gp_params[:-1])
         # Compute kernel
         K = self.kernel(X, X, theta) + np.eye(N)*(sigma_n + 1e-8)
         L = cholesky(K, lower=True)
@@ -290,7 +290,7 @@ class ManifoldGP(GPmodel):
         X_star = self.net_apply(nn_params, X_star)
         # Fetch params
         sigma_n = np.exp(gp_params[-1])
-        theta = gp_params[:-1]
+        theta = np.exp(gp_params[:-1])
         # Compute kernels
         k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(sigma_n + 1e-8)
         k_pX = self.kernel(X_star, X, theta)
@@ -322,8 +322,8 @@ class MultifidelityGP(GPmodel):
         rho = params[-3]
         sigma_n_L = np.exp(params[-2])
         sigma_n_H = np.exp(params[-1])
-        theta_L = params[:D+1]
-        theta_H = params[D+1:-3]
+        theta_L = np.exp(params[:D+1])
+        theta_H = np.exp(params[D+1:-3])
         # Compute kernels
         K_LL = self.kernel(XL, XL, theta_L) + np.eye(NL)*(sigma_n_L + 1e-8)
         K_LH = rho*self.kernel(XL, XH, theta_L)
@@ -376,8 +376,8 @@ class MultifidelityGP(GPmodel):
         rho = params[-3]
         sigma_n_L = np.exp(params[-2])
         sigma_n_H = np.exp(params[-1])
-        theta_L = params[:D+1]
-        theta_H = params[D+1:-3]
+        theta_L = np.exp(params[:D+1])
+        theta_H = np.exp(params[D+1:-3])
         # Compute kernels
         k_pp = rho**2 * self.kernel(X_star, X_star, theta_L) + \
                         self.kernel(X_star, X_star, theta_H) + \
@@ -423,7 +423,7 @@ class GradientGP(GPmodel):
         # Fetch params
         sigma_n_F = np.exp(params[-2])
         sigma_n_G = np.exp(params[-1])
-        theta = params[:-2]
+        theta = np.exp(params[:-2])
         # Compute kernels
         K_FF = self.kernel(XF, XF, theta) + np.eye(NF)*(sigma_n_F + 1e-8)
         K_FG = self.k_dx2(XF, XG, theta)
@@ -472,7 +472,7 @@ class GradientGP(GPmodel):
         # Fetch params
         sigma_n_F = np.exp(params[-2])
         sigma_n_G = np.exp(params[-1])
-        theta = params[:-2]
+        theta = np.exp(params[:-2])
         # Compute kernels
         k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(sigma_n_F + 1e-8)
         psi1 = self.kernel(X_star, XF, theta)
@@ -517,7 +517,7 @@ class MissingInputsGP(GPmodel):
         N = X.shape[0]
         # Fetch params
         sigma_n = np.exp(gp_params[-1])
-        theta = gp_params[:-1]
+        theta = np.exp(gp_params[:-1])
         # Compute kernel
         K = self.kernel(X, X, theta) + np.eye(N)*(sigma_n + 1e-8)
         L = cholesky(K, lower=True)
@@ -568,7 +568,7 @@ class MissingInputsGP(GPmodel):
         X = index_update(X, index[:,self.missing_dims], Xm)
         # Fetch params
         sigma_n = np.exp(gp_params[-1])
-        theta = gp_params[:-1]
+        theta = np.exp(gp_params[:-1])
         # Compute kernels
         k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(sigma_n + 1e-8)
         k_pX = self.kernel(X_star, X, theta)
@@ -584,6 +584,119 @@ class MissingInputsGP(GPmodel):
         std = std*norm_const['sigma_y']**2
         return mu, std
 
+# A minimal MultifidelityGP regression class (inherits from GPmodel)
+class DeepMultifidelityGP(GPmodel):
+    # Initialize the class
+    def __init__(self, options, layers):
+        super().__init__(options)
+        self.layers = layers
+        self.net_init, self.net_apply = utils.init_NN(layers)
+        # Determine parameter IDs
+        nn_params = self.net_init(random.PRNGKey(0), (-1, layers[0]))[1]
+        nn_params_flat, self.unravel = ravel_pytree(nn_params)
+        num_nn_params = len(nn_params_flat)
+        num_gp_params = initializers.random_init_MultifidelityGP(random.PRNGKey(0), layers[-1]).shape[0]
+        self.gp_params_ids = np.arange(num_gp_params)
+        self.nn_params_ids = np.arange(num_nn_params) + num_gp_params
+
+    @partial(jit, static_argnums=(0,))
+    def compute_cholesky(self, params, batch):
+        XL, XH = batch['XL'], batch['XH']
+        NL, NH = XL.shape[0], XH.shape[0]
+        gp_params = params[self.gp_params_ids]
+        nn_params = self.unravel(params[self.nn_params_ids])
+        # Warp inputs
+        XL = self.net_apply(nn_params, XL)
+        XH = self.net_apply(nn_params, XH)
+        D = XH.shape[1]
+        # Fetch params
+        rho = gp_params[-3]
+        sigma_n_L = np.exp(gp_params[-2])
+        sigma_n_H = np.exp(gp_params[-1])
+        theta_L = np.exp(gp_params[:D+1])
+        theta_H = np.exp(gp_params[D+1:-3])
+        # Compute kernels
+        K_LL = self.kernel(XL, XL, theta_L) + np.eye(NL)*(sigma_n_L + 1e-8)
+        K_LH = rho*self.kernel(XL, XH, theta_L)
+        K_HH = rho**2 * self.kernel(XH, XH, theta_L) + \
+                        self.kernel(XH, XH, theta_H) + np.eye(NH)*(sigma_n_H + 1e-8)
+        K = np.vstack((np.hstack((K_LL,K_LH)),
+                       np.hstack((K_LH.T,K_HH))))
+        L = cholesky(K, lower=True)
+        return L
+
+    def train(self, batch, rng_key, num_restarts = 10):
+        # Define objective that returns NumPy arrays
+        def objective(params):
+            value, grads = self.likelihood_value_and_grad(params, batch)
+            out = (onp.array(value), onp.array(grads))
+            return out
+        # Optimize with random restarts
+        params = []
+        likelihood = []
+        dim = self.layers[-1]
+        rng_key = random.split(rng_key, num_restarts)
+        for i in range(num_restarts):
+            key1, key2 = random.split(rng_key[i])
+            gp_params = initializers.random_init_MultifidelityGP(key1, dim)
+            nn_params = self.net_init(key2,  (-1, self.layers[0]))[1]
+            init_params = np.concatenate([gp_params, ravel_pytree(nn_params)[0]])
+            p, val = minimize_lbfgs(objective, init_params)
+            params.append(p)
+            likelihood.append(val)
+        params = np.vstack(params)
+        likelihood = np.vstack(likelihood)
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
+        best_params = params[idx_best,:]
+
+        return best_params
+
+    @partial(jit, static_argnums=(0,))
+    def predict(self, X_star, **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const = kwargs['norm_const']
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
+        XL, XH = batch['XL'], batch['XH']
+        y = batch['y']
+        gp_params = params[self.gp_params_ids]
+        nn_params = self.unravel(params[self.nn_params_ids])
+        # Warp inputs
+        XL = self.net_apply(nn_params, XL)
+        XH = self.net_apply(nn_params, XH)
+        X_star = self.net_apply(nn_params, X_star)
+        D = XH.shape[1]
+        # Fetch params
+        rho = gp_params[-3]
+        sigma_n_L = np.exp(gp_params[-2])
+        sigma_n_H = np.exp(gp_params[-1])
+        theta_L = np.exp(gp_params[:D+1])
+        theta_H = np.exp(gp_params[D+1:-3])
+        # Compute kernels
+        k_pp = rho**2 * self.kernel(X_star, X_star, theta_L) + \
+                        self.kernel(X_star, X_star, theta_H) + \
+                        np.eye(X_star.shape[0])*(sigma_n_H + 1e-8)
+        psi1 = rho*self.kernel(X_star, XL, theta_L)
+        psi2 = rho**2 * self.kernel(X_star, XH, theta_L) + \
+                        self.kernel(X_star, XH, theta_H)
+        k_pX = np.hstack((psi1,psi2))
+        L = self.compute_cholesky(params, batch)
+        alpha = solve_triangular(L.T,solve_triangular(L, y, lower=True))
+        beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+        # Compute predictive mean, std
+        mu = np.matmul(k_pX, alpha)
+        cov = k_pp - np.matmul(k_pX, beta)
+        std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+        # Denormalize
+        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
+        std = std*norm_const['sigma_y']**2
+        return mu, std
 
 # A minimal MultifidelityGP regression class for heterogeneous inputs (inherits from GPmodel)
 class HeterogeneousMultifidelityGP_v2(GPmodel):
@@ -609,14 +722,14 @@ class HeterogeneousMultifidelityGP_v2(GPmodel):
         # Warp low-fidelity inputs to [0,1]^D_H
         gp_params = params[self.gp_params_ids]
         nn_params = self.unravel(params[self.nn_params_ids])
-        XL_missing = sigmoid(self.net_apply(nn_params, XL))
+        XL_missing = XL[:,self.missing_dims] + sigmoid(self.net_apply(nn_params, XL))
         XL = index_update(XL, index[:,self.missing_dims], XL_missing)
         # Fetch params
         rho = gp_params[-3]
         sigma_n_L = np.exp(gp_params[-2])
         sigma_n_H = np.exp(gp_params[-1])
-        theta_L = gp_params[:D+1]
-        theta_H = gp_params[D+1:-3]
+        theta_L = np.exp(gp_params[:D+1])
+        theta_H = np.exp(gp_params[D+1:-3])
         # Compute kernels
         K_LL = self.kernel(XL, XL, theta_L) + np.eye(NL)*(sigma_n_L + 1e-8)
         K_LH = rho*self.kernel(XL, XH, theta_L)
@@ -670,14 +783,14 @@ class HeterogeneousMultifidelityGP_v2(GPmodel):
         # Warp low-fidelity inputs
         gp_params = params[self.gp_params_ids]
         nn_params = self.unravel(params[self.nn_params_ids])
-        XL_missing = sigmoid(self.net_apply(nn_params, XL))
+        XL_missing = XL[:,self.missing_dims] + sigmoid(self.net_apply(nn_params, XL))
         XL = index_update(XL, index[:,self.missing_dims], XL_missing)
         # Fetch params
         rho = gp_params[-3]
         sigma_n_L = np.exp(gp_params[-2])
         sigma_n_H = np.exp(gp_params[-1])
-        theta_L = gp_params[:D+1]
-        theta_H = gp_params[D+1:-3]
+        theta_L = np.exp(gp_params[:D+1])
+        theta_H = np.exp(gp_params[D+1:-3])
         # Compute kernels
         k_pp = rho**2 * self.kernel(X_star, X_star, theta_L) + \
                         self.kernel(X_star, X_star, theta_H) + \
@@ -698,6 +811,130 @@ class HeterogeneousMultifidelityGP_v2(GPmodel):
         std = std*norm_const['sigma_y']**2
         return mu, std
 
+
+# A minimal MultifidelityGP regression class for heterogeneous inputs (inherits from GPmodel)
+class ManifoldMultifidelityGP(GPmodel):
+    # Initialize the class
+    def __init__(self, options, layers_L, layers_H):
+        super().__init__(options)
+        self.layers_L = layers_L
+        self.layers_H = layers_H
+        self.net_L_init, self.net_L_apply = utils.init_NN(layers_L)
+        self.net_H_init, self.net_H_apply = utils.init_NN(layers_H)
+        # Determine parameter IDs
+        nn_L_params = self.net_L_init(random.PRNGKey(0), (-1, layers_L[0]))[1]
+        nn_H_params = self.net_H_init(random.PRNGKey(1), (-1, layers_L[0]))[1]
+        nn_L_params_flat, self.unravel_L = ravel_pytree(nn_L_params)
+        nn_H_params_flat, self.unravel_H = ravel_pytree(nn_H_params)
+        num_nn_L_params = len(nn_L_params_flat)
+        num_nn_H_params = len(nn_H_params_flat)
+        num_gp_params = initializers.random_init_MultifidelityGP(random.PRNGKey(0), layers_H[-1]).shape[0]
+        self.gp_params_ids = np.arange(num_gp_params)
+        self.nn_L_params_ids = np.arange(num_nn_L_params) + num_gp_params
+        self.nn_H_params_ids = np.arange(num_nn_H_params) + num_nn_L_params + num_gp_params
+
+    @partial(jit, static_argnums=(0,))
+    def compute_cholesky(self, params, batch):
+        XL, XH = batch['XL'], batch['XH']
+        NL, NH = XL.shape[0], XH.shape[0]
+        # Warp inputs to [0,1]^D_H
+        gp_params = params[self.gp_params_ids]
+        nn_L_params = self.unravel_L(params[self.nn_L_params_ids])
+        nn_H_params = self.unravel_H(params[self.nn_H_params_ids])
+        XL = sigmoid(self.net_L_apply(nn_L_params, XL))
+        XH = sigmoid(self.net_H_apply(nn_H_params, XH))
+        # Fetch params
+        D = self.layers_H[-1]
+        rho = gp_params[-3]
+        sigma_n_L = np.exp(gp_params[-2])
+        sigma_n_H = np.exp(gp_params[-1])
+        theta_L = np.exp(gp_params[:D+1])
+        theta_H = np.exp(gp_params[D+1:-3])
+        # Compute kernels
+        K_LL = self.kernel(XL, XL, theta_L) + np.eye(NL)*(sigma_n_L + 1e-8)
+        K_LH = rho*self.kernel(XL, XH, theta_L)
+        K_HH = rho**2 * self.kernel(XH, XH, theta_L) + \
+                        self.kernel(XH, XH, theta_H) + np.eye(NH)*(sigma_n_H + 1e-8)
+        K = np.vstack((np.hstack((K_LL,K_LH)),
+                       np.hstack((K_LH.T,K_HH))))
+        L = cholesky(K, lower=True)
+        return L
+
+    def train(self, batch, rng_key, num_restarts = 10):
+        # Define objective that returns NumPy arrays
+        def objective(params):
+            value, grads = self.likelihood_value_and_grad(params, batch)
+            out = (onp.array(value), onp.array(grads))
+            return out
+        # Optimize with random restarts
+        params = []
+        likelihood = []
+        dim = self.layers_H[-1]
+        rng_key = random.split(rng_key, num_restarts)
+        for i in range(num_restarts):
+            key1, key2, key3 = random.split(rng_key[i], 3)
+            gp_params = initializers.random_init_MultifidelityGP(key1, dim)
+            nn_L_params = self.net_L_init(key2,  (-1, self.layers_L[0]))[1]
+            nn_H_params = self.net_H_init(key3,  (-1, self.layers_H[0]))[1]
+            init_params = np.concatenate([gp_params,
+                                          ravel_pytree(nn_L_params)[0],
+                                          ravel_pytree(nn_H_params)[0]])
+            p, val = minimize_lbfgs(objective, init_params)
+            params.append(p)
+            likelihood.append(val)
+        params = np.vstack(params)
+        likelihood = np.vstack(likelihood)
+        #### find the best likelihood besides nan ####
+        bestlikelihood = np.nanmin(likelihood)
+        idx_best = np.where(likelihood == bestlikelihood)
+        idx_best = idx_best[0][0]
+        best_params = params[idx_best,:]
+        return best_params
+
+    @partial(jit, static_argnums=(0,))
+    def predict(self, X_star, **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const = kwargs['norm_const']
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
+        XL, XH = batch['XL'], batch['XH']
+        y = batch['y']
+        # Warp inputs to [0,1]^D_H
+        gp_params = params[self.gp_params_ids]
+        nn_L_params = self.unravel_L(params[self.nn_L_params_ids])
+        nn_H_params = self.unravel_H(params[self.nn_H_params_ids])
+        XL = sigmoid(self.net_L_apply(nn_L_params, XL))
+        XH = sigmoid(self.net_H_apply(nn_H_params, XH))
+        X_star = sigmoid(self.net_H_apply(nn_H_params, X_star))
+        # Fetch params
+        D = self.layers_H[-1]
+        rho = gp_params[-3]
+        sigma_n_L = np.exp(gp_params[-2])
+        sigma_n_H = np.exp(gp_params[-1])
+        theta_L = np.exp(gp_params[:D+1])
+        theta_H = np.exp(gp_params[D+1:-3])
+        # Compute kernels
+        k_pp = rho**2 * self.kernel(X_star, X_star, theta_L) + \
+                        self.kernel(X_star, X_star, theta_H) + \
+                        np.eye(X_star.shape[0])*(sigma_n_H + 1e-8)
+        psi1 = rho*self.kernel(X_star, XL, theta_L)
+        psi2 = rho**2 * self.kernel(X_star, XH, theta_L) + \
+                        self.kernel(X_star, XH, theta_H)
+        k_pX = np.hstack((psi1,psi2))
+        L = self.compute_cholesky(params, batch)
+        alpha = solve_triangular(L.T,solve_triangular(L, y, lower=True))
+        beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+        # Compute predictive mean, std
+        mu = np.matmul(k_pX, alpha)
+        cov = k_pp - np.matmul(k_pX, beta)
+        std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+        # Denormalize
+        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
+        std = std*norm_const['sigma_y']**2
+        return mu, std
 
 # A minimal MultifidelityGP regression class for heterogeneous inputs (inherits from GPmodel)
 class HeterogeneousMultifidelityGP(GPmodel):
@@ -727,8 +964,8 @@ class HeterogeneousMultifidelityGP(GPmodel):
         rho = gp_params[-3]
         sigma_n_L = np.exp(gp_params[-2])
         sigma_n_H = np.exp(gp_params[-1])
-        theta_L = gp_params[:D+1]
-        theta_H = gp_params[D+1:-3]
+        theta_L = np.exp(gp_params[:D+1])
+        theta_H = np.exp(gp_params[D+1:-3])
         # Compute kernels
         K_LL = self.kernel(XL, XL, theta_L) + np.eye(NL)*(sigma_n_L + 1e-8)
         K_LH = rho*self.kernel(XL, XH, theta_L)
@@ -789,8 +1026,8 @@ class HeterogeneousMultifidelityGP(GPmodel):
         rho = gp_params[-3]
         sigma_n_L = np.exp(gp_params[-2])
         sigma_n_H = np.exp(gp_params[-1])
-        theta_L = gp_params[:D+1]
-        theta_H = gp_params[D+1:-3]
+        theta_L = np.exp(gp_params[:D+1])
+        theta_H = np.exp(gp_params[D+1:-3])
         # Compute kernels
         k_pp = rho**2 * self.kernel(X_star, X_star, theta_L) + \
                         self.kernel(X_star, X_star, theta_H) + \

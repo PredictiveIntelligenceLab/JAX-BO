@@ -20,4 +20,4 @@ from jaxbo import kernels
 from jaxbo import initializers
 from jaxbo import optimizers
 from jaxbo import acquisitions
-# from jaxbo import mcmc_models
+from jaxbo import mcmc_models

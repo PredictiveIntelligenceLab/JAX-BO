@@ -33,3 +33,8 @@ def LW_LCB(mean, std, weights, kappa = 2.0):
 def LW_US(std, weights):
     lw_us = std*weights
     return -lw_us[0]
+
+@jit
+def CSF(mean, std):
+    acq = np.abs(mean)/(std+1e-8)
+    return acq[0]
