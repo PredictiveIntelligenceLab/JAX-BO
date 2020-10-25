@@ -1,6 +1,6 @@
 import numpy as onp
 import jax.numpy as np
-from jax import jit, jvp, vjp, random
+from jax import vmap, jit, jvp, vjp, random
 from jax.scipy.linalg import cholesky, solve_triangular
 from jax.flatten_util import ravel_pytree
 from jax.scipy.special import expit as sigmoid
@@ -105,6 +105,11 @@ class GPmodel():
         elif self.options['criterion'] == 'LW-US':
             weights = utils.compute_w_gmm(x, **kwargs)
             return acquisitions.LW_US(std, weights)
+        elif self.options['criterion'] == 'CLSF':
+            return acquisitions.CLSF(mean, std, kappa = self.options['kappa'])
+        elif self.options['criterion'] == 'LW_CLSF':
+            weights = utils.compute_w_gmm(x, **kwargs)
+            return acquisitions.LW_CLSF(mean, std, weights, kappa = self.options['kappa'])
         else:
             raise NotImplementedError
 
@@ -115,7 +120,7 @@ class GPmodel():
         grads = f_vjp(np.ones_like(primals))[0]
         return primals, grads
 
-    def compute_next_point(self, num_restarts = 10, **kwargs):
+    def compute_next_point_lbfgs(self, num_restarts = 10, **kwargs):
         # Define objective that returns NumPy arrays
         def objective(x):
             value, grads = self.acq_value_and_grad(x, **kwargs)
@@ -138,6 +143,13 @@ class GPmodel():
         acq = np.vstack(acq)
         idx_best = np.argmin(acq)
         x_new = loc[idx_best:idx_best+1,:]
+        return x_new
+
+    def compute_next_point_gs(self, X_cand, **kwargs):
+        fun = lambda x: self.acquisition(x, **kwargs)
+        acq = vmap(fun)(X_cand)
+        idx_best = np.argmin(acq)
+        x_new = X_cand[idx_best:idx_best+1,:]
         return x_new
 
 

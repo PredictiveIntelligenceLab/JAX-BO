@@ -111,7 +111,7 @@ class GP(MCMCmodel):
         sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
         return mu, sample
 
-# A minimal Gaussian process regression class (inherits from MCMCmodel)
+# A minimal Gaussian process classification class (inherits from MCMCmodel)
 class GPclassifier(MCMCmodel):
     # Initialize the class
     def __init__(self, options):
@@ -124,8 +124,6 @@ class GPclassifier(MCMCmodel):
         # set uninformative log-normal priors
         var = sample('kernel_var', dist.LogNormal(0.0, 1.0), sample_shape = (1,))
         length = sample('kernel_length', dist.LogNormal(0.0, 1.0), sample_shape = (D,))
-        # var = sample('kernel_var', dist.HalfNormal(5.0), sample_shape = (1,))
-        # length = sample('kernel_length', dist.Gamma(2.0, 2.0), sample_shape = (D,))
         theta = np.concatenate([var, length])
         # compute kernel
         K = self.kernel(X, X, theta) + np.eye(N)*1e-8
@@ -141,7 +139,7 @@ class GPclassifier(MCMCmodel):
     def posterior_sample(self, key, sample, X_star, **kwargs):
         # Fetch training data
         batch = kwargs['batch']
-        X, y = batch['X'], batch['y']
+        X = batch['X']
         # Fetch params
         var = sample['kernel_var']
         length = sample['kernel_length']
@@ -163,6 +161,92 @@ class GPclassifier(MCMCmodel):
         sample = mu + std * random.normal(key, mu.shape)
         return mu, sample
 
+# A minimal Gaussian process classification class (inherits from MCMCmodel)
+class MultifidelityGPclassifier(MCMCmodel):
+    # Initialize the class
+    def __init__(self, options):
+        super().__init__(options)
+
+    def model(self, batch):
+        XL, XH = batch['XL'], batch['XH']
+        y = batch['y']
+        NL, NH = XL.shape[0], XH.shape[0]
+        D = XH.shape[1]
+        # set uninformative log-normal priors for low-fidelity kernel
+        var_L = sample('kernel_var_L', dist.LogNormal(0.0, 1.0), sample_shape = (1,))
+        length_L = sample('kernel_length_L', dist.LogNormal(0.0, 1.0), sample_shape = (D,))
+        theta_L = np.concatenate([var_L, length_L])
+        # set uninformative log-normal priors for high-fidelity kernel
+        var_H = sample('kernel_var_H', dist.LogNormal(0.0, 1.0), sample_shape = (1,))
+        length_H = sample('kernel_length_H', dist.LogNormal(0.0, 1.0), sample_shape = (D,))
+        theta_H = np.concatenate([var_H, length_H])
+        # prior for rho
+        rho = sample('rho', dist.Normal(0.0, 10.0), sample_shape = (1,))
+        # Compute kernels
+        K_LL = self.kernel(XL, XL, theta_L) + np.eye(NL)*1e-8
+        K_LH = rho*self.kernel(XL, XH, theta_L)
+        K_HH = rho**2 * self.kernel(XH, XH, theta_L) + \
+                        self.kernel(XH, XH, theta_H) + np.eye(NH)*1e-8
+        K = np.vstack((np.hstack((K_LL,K_LH)),
+                       np.hstack((K_LH.T,K_HH))))
+        L = cholesky(K, lower=True)
+        # Generate latent function
+        beta_L = sample('beta_L', dist.Normal(0.0, 1.0))
+        beta_H = sample('beta_H', dist.Normal(0.0, 1.0))
+        eta_L = sample('eta_L', dist.Normal(0.0, 1.0), sample_shape=(NL,))
+        eta_H = sample('eta_H', dist.Normal(0.0, 1.0), sample_shape=(NH,))
+        beta = np.concatenate([beta_L*np.ones(NL), beta_H*np.ones(NH)])
+        eta = np.concatenate([eta_L, eta_H])
+        f = np.matmul(L, eta) + beta
+        # Bernoulli likelihood
+        sample('y', dist.Bernoulli(logits=f), obs=y)
+
+    @partial(jit, static_argnums=(0,))
+    def posterior_sample(self, key, sample, X_star, **kwargs):
+        # Fetch training data
+        batch = kwargs['batch']
+        XL, XH = batch['XL'], batch['XH']
+        NL, NH = XL.shape[0], XH.shape[0]
+        # Fetch params
+        var_L = sample['kernel_var_L']
+        var_H = sample['kernel_var_H']
+        length_L = sample['kernel_length_L']
+        length_H = sample['kernel_length_H']
+        beta_L = sample['beta_L']
+        beta_H = sample['beta_H']
+        eta_L = sample['eta_L']
+        eta_H = sample['eta_H']
+        rho = sample['rho']
+        theta_L = np.concatenate([var_L, length_L])
+        theta_H = np.concatenate([var_H, length_H])
+        beta = np.concatenate([beta_L*np.ones(NL), beta_H*np.ones(NH)])
+        eta = np.concatenate([eta_L, eta_H])
+        # Compute kernels
+        k_pp = rho**2 * self.kernel(X_star, X_star, theta_L) + \
+                        self.kernel(X_star, X_star, theta_H) + \
+                        np.eye(X_star.shape[0])*1e-8
+        psi1 = rho*self.kernel(X_star, XL, theta_L)
+        psi2 = rho**2 * self.kernel(X_star, XH, theta_L) + \
+                        self.kernel(X_star, XH, theta_H)
+        k_pX = np.hstack((psi1,psi2))
+        # Compute K_xx
+        K_LL = self.kernel(XL, XL, theta_L) + np.eye(NL)*1e-8
+        K_LH = rho*self.kernel(XL, XH, theta_L)
+        K_HH = rho**2 * self.kernel(XH, XH, theta_L) + \
+                        self.kernel(XH, XH, theta_H) + np.eye(NH)*1e-8
+        K_xx = np.vstack((np.hstack((K_LL,K_LH)),
+                       np.hstack((K_LH.T,K_HH))))
+        L = cholesky(K_xx, lower=True)
+        # Sample latent function
+        f = np.matmul(L, eta) + beta
+        tmp_1 = solve_triangular(L.T,solve_triangular(L, f, lower=True))
+        tmp_2  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+        # Compute predictive mean
+        mu = np.matmul(k_pX, tmp_1)
+        cov = k_pp - np.matmul(k_pX, tmp_2)
+        std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+        sample = mu + std * random.normal(key, mu.shape)
+        return mu, sample
 
 # A minimal Gaussian process regression class (inherits from MCMCmodel)
 class BayesianMLP(MCMCmodel):
