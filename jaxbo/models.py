@@ -92,24 +92,31 @@ class GPmodel():
         x = x[None,:]
         mean, std = self.predict(x, **kwargs)
         if self.options['criterion'] == 'LW-LCB':
+            kappa = kwargs['kappa']
             weights = utils.compute_w_gmm(x, **kwargs)
-            return acquisitions.LW_LCB(mean, std, weights, kappa = self.options['kappa'])
+            return acquisitions.LW_LCB(mean, std, weights, kappa)
         elif self.options['criterion'] == 'LCB':
-            return acquisitions.LCB(mean, std, kappa = self.options['kappa'])
+            kappa = kwargs['kappa']
+            return acquisitions.LCB(mean, std, kappa)
         elif self.options['criterion'] == 'EI':
             batch = kwargs['batch']
             best = np.min(batch['y'])
             return acquisitions.EI(mean, std, best)
         elif self.options['criterion'] == 'US':
             return acquisitions.US(std)
+        elif self.options['criterion'] == 'TS':
+            sample = self.draw_posterior_sample(x, **kwargs)
+            return sample
         elif self.options['criterion'] == 'LW-US':
             weights = utils.compute_w_gmm(x, **kwargs)
             return acquisitions.LW_US(std, weights)
         elif self.options['criterion'] == 'CLSF':
-            return acquisitions.CLSF(mean, std, kappa = self.options['kappa'])
+            kappa = kwargs['kappa']
+            return acquisitions.CLSF(mean, std, kappa)
         elif self.options['criterion'] == 'LW_CLSF':
+            kappa = kwargs['kappa']
             weights = utils.compute_w_gmm(x, **kwargs)
-            return acquisitions.LW_CLSF(mean, std, weights, kappa = self.options['kappa'])
+            return acquisitions.LW_CLSF(mean, std, weights, kappa)
         else:
             raise NotImplementedError
 
@@ -224,6 +231,33 @@ class GP(GPmodel):
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
         std = std*norm_const['sigma_y']**2
         return mu, std
+
+    @partial(jit, static_argnums=(0,))
+    def draw_posterior_sample(self, X_star, **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const = kwargs['norm_const']
+        rng_key = kwargs['rng_key']
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
+        X, y = batch['X'], batch['y']
+        # Fetch params
+        sigma_n = np.exp(params[-1])
+        theta = np.exp(params[:-1])
+        # Compute kernels
+        k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(sigma_n + 1e-8)
+        k_pX = self.kernel(X_star, X, theta)
+        L = self.compute_cholesky(params, batch)
+        alpha = solve_triangular(L.T,solve_triangular(L, y, lower=True))
+        beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+        # Compute predictive mean
+        mu = np.matmul(k_pX, alpha)
+        z = random.normal(rng_key, (X_star.shape[0], 1))
+        sample = np.matmul(L, z) + mu
+        sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
+        return sample
 
 
 # A minimal ManifoldGP regression class (inherits from GPmodel)
