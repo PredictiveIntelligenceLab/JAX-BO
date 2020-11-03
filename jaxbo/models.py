@@ -254,8 +254,8 @@ class GP(GPmodel):
         beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
         # Compute predictive mean
         mu = np.matmul(k_pX, alpha)
-        z = random.normal(rng_key, (X_star.shape[0], 1))
-        sample = np.matmul(L, z) + mu
+        cov = k_pp - np.matmul(k_pX, beta)
+        sample = random.multivariate_normal(rng_key, mu, cov)
         sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
         return sample
 

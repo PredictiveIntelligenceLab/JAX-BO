@@ -174,7 +174,7 @@ class GP(MCMCmodel):
 #         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
 #         sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
 #         return mu, sample
-s
+
 # A minimal Gaussian process classification class (inherits from MCMCmodel)
 class GPclassifier(MCMCmodel):
     # Initialize the class
