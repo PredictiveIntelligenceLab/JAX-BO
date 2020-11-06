@@ -127,8 +127,6 @@ def fit_kernel_density(X, xi, weights = None, bw=None):
         if bw < 1e-8:
             bw = 1.0
 
-    bw = 1.0
-
     kde_pdf_x, kde_pdf_y = FFTKDE(bw=bw).fit(X, weights).evaluate()
 
     # Define the interpolation function
