@@ -229,7 +229,7 @@ class GP(GPmodel):
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
         # Denormalize
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']**2
+        std = std*norm_const['sigma_y']
         return mu, std
 
     @partial(jit, static_argnums=(0,))
@@ -349,7 +349,7 @@ class ManifoldGP(GPmodel):
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
         # Denormalize
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']**2
+        std = std*norm_const['sigma_y']
         return mu, std
 
 
@@ -441,7 +441,7 @@ class MultifidelityGP(GPmodel):
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
         # Denormalize
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']**2
+        std = std*norm_const['sigma_y']
         return mu, std
 
 # A minimal GradientGP regression class (inherits from GPmodel)
@@ -533,7 +533,7 @@ class GradientGP(GPmodel):
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
         # Denormalize
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']**2
+        std = std*norm_const['sigma_y']
         return mu, std
 
 # A minimal ManifoldGP regression class (inherits from GPmodel)
@@ -627,7 +627,7 @@ class MissingInputsGP(GPmodel):
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
         # Denormalize
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']**2
+        std = std*norm_const['sigma_y']
         return mu, std
 
 # A minimal MultifidelityGP regression class (inherits from GPmodel)
@@ -741,7 +741,7 @@ class DeepMultifidelityGP(GPmodel):
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
         # Denormalize
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']**2
+        std = std*norm_const['sigma_y']
         return mu, std
 
 # A minimal MultifidelityGP regression class for heterogeneous inputs (inherits from GPmodel)
@@ -854,7 +854,7 @@ class HeterogeneousMultifidelityGP_v2(GPmodel):
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
         # Denormalize
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']**2
+        std = std*norm_const['sigma_y']
         return mu, std
 
 
@@ -979,7 +979,7 @@ class ManifoldMultifidelityGP(GPmodel):
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
         # Denormalize
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']**2
+        std = std*norm_const['sigma_y']
         return mu, std
 
 # A minimal MultifidelityGP regression class for heterogeneous inputs (inherits from GPmodel)
@@ -1091,5 +1091,5 @@ class HeterogeneousMultifidelityGP(GPmodel):
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
         # Denormalize
         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']**2
+        std = std*norm_const['sigma_y']
         return mu, std
