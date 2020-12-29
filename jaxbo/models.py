@@ -260,6 +260,230 @@ class GP(GPmodel):
         return sample
 
 
+# A minimal Gaussian process regression class (inherits from GPmodel)
+class MultipleIndependentOutputsGP(GPmodel):
+    # Initialize the class
+    def __init__(self, options):
+        super().__init__(options)
+
+    @partial(jit, static_argnums=(0,))
+    def compute_cholesky(self, params, batch):
+        X = batch['X']
+        N, D = X.shape
+        # Fetch params
+        sigma_n = np.exp(params[-1])
+        theta = np.exp(params[:-1])
+        # Compute kernel
+        K = self.kernel(X, X, theta) + np.eye(N)*(sigma_n + 1e-8)
+        L = cholesky(K, lower=True)
+        return L
+
+    def train(self, batch_list, rng_key, num_restarts = 10):
+        best_params = []
+        for _, batch in enumerate(batch_list):
+            # Define objective that returns NumPy arrays
+            def objective(params):
+                value, grads = self.likelihood_value_and_grad(params, batch)
+                out = (onp.array(value), onp.array(grads))
+                return out
+            # Optimize with random restarts
+            params = []
+            likelihood = []
+            dim = batch['X'].shape[1]
+            rng_keys = random.split(rng_key, num_restarts)
+            for i in range(num_restarts):
+                init = initializers.random_init_GP(rng_keys[i], dim)
+                p, val = minimize_lbfgs(objective, init)
+                params.append(p)
+                likelihood.append(val)
+            params = np.vstack(params)
+            likelihood = np.vstack(likelihood)
+            #### find the best likelihood besides nan ####
+            bestlikelihood = np.nanmin(likelihood)
+            idx_best = np.where(likelihood == bestlikelihood)
+            idx_best = idx_best[0][0]
+            best_params.append(params[idx_best,:])
+        return best_params
+
+    @partial(jit, static_argnums=(0,))
+    def predict(self, X_star, **kwargs):
+        mu_list = []
+        std_list = []
+        params_list =  kwargs['params']
+        batch_list = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const_list = kwargs['norm_const']
+        zipped_args = zip(params_list, batch_list, norm_const_list)
+        for _, (params, batch, norm_const) in enumerate(zipped_args):
+            # Normalize to [0,1]
+            X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+            # Fetch normalized training data
+            X, y = batch['X'], batch['y']
+            # Fetch params
+            sigma_n = np.exp(params[-1])
+            theta = np.exp(params[:-1])
+            # Compute kernels
+            k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(sigma_n + 1e-8)
+            k_pX = self.kernel(X_star, X, theta)
+            L = self.compute_cholesky(params, batch)
+            alpha = solve_triangular(L.T,solve_triangular(L, y, lower=True))
+            beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+            # Compute predictive mean, std
+            mu = np.matmul(k_pX, alpha)
+            cov = k_pp - np.matmul(k_pX, beta)
+            std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+            # Denormalize
+            mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
+            std = std*norm_const['sigma_y']
+            mu_list.append(mu)
+            std_list.append(std)
+        return np.array(mu_list), np.array(std_list)
+
+    @partial(jit, static_argnums=(0,))
+    def acquisition(self, x, **kwargs):
+        x = x[None,:]
+        mean, std = self.predict(x, **kwargs)
+        if self.options['criterion'] == 'EIC':
+            batch_list = kwargs['batch']
+            best = np.min(batch_list[0]['y'])
+            return acquisitions.EIC(mean, std, best)
+        elif self.options['criterion'] == 'LCBC':
+            kappa = kwargs['kappa']
+            return acquisitions.LCB(mean, std, kappa)
+        else:
+            raise NotImplementedError
+
+    @partial(jit, static_argnums=(0,))
+    def draw_posterior_sample(self, X_star, **kwargs):
+        sample_list = []
+        params_list =  kwargs['params']
+        batch_list = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const_list = kwargs['norm_const']
+        rng_key_list = kwargs['rng_key']
+        zipped_args = zip(params_list, batch_list, norm_const_list, rng_key_list)
+        for i, (params, batch, norm_const, rng_key) in enumerate(zipped_args):
+            # Normalize to [0,1]
+            X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+            # Fetch normalized training data
+            X, y = batch['X'], batch['y']
+            # Fetch params
+            sigma_n = np.exp(params[-1])
+            theta = np.exp(params[:-1])
+            # Compute kernels
+            k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(sigma_n + 1e-8)
+            k_pX = self.kernel(X_star, X, theta)
+            L = self.compute_cholesky(params, batch)
+            alpha = solve_triangular(L.T,solve_triangular(L, y, lower=True))
+            beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+            # Compute predictive mean
+            mu = np.matmul(k_pX, alpha)
+            cov = k_pp - np.matmul(k_pX, beta)
+            sample = random.multivariate_normal(rng_key, mu, cov)
+            sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
+            sample_list.append(sample)
+        return np.array(sample)
+
+#
+# # A minimal Gaussian process regression class (inherits from GPmodel)
+# class SparseGP(GPmodel):
+#     # Initialize the class
+#     def __init__(self, options):
+#         super().__init__(options)
+#
+#     @partial(jit, static_argnums=(0,))
+#     def likelihood(self, params, batch):
+#         X, y = batch['X'], batch['y']
+#         Z = batch['Z']
+#         N, D = X.shape
+#         M = Z.shape[0]
+#         # Fetch params
+#         sigma_n = np.exp(params[-1])
+#         theta = np.exp(params[:-1])
+#         # Compute kernel
+#         K_xz = self.kernel(X, Z, theta)
+#         K_zz = self.kernel(Z, Z, theta) + np.eye(M)*1e-8
+#         L = cholesky(K_zz, lower=True)
+#         beta = solve_triangular(L.T,solve_triangular(L, K_xz.T, lower=True))
+#         Q_ff = np.matmul(K_xz, beta)
+#
+#         K = K_zz + np.matmul(K_zx, K_zx.T)/sigma_n
+#
+#         beta = solve_triangular(L.T,solve_triangular(L, K_zx, lower=True))
+#         # Inverse covariance using the Woodbury matrix identity
+#         K_inv = np.eye(N)/sigma_n - np.matmul(K_zx.T, beta)/sigma_n**2
+#         # Compute negative log-marginal likelihood
+#         alpha = np.matmul(K_inv, y)
+#         NLML = 0.5*np.matmul(np.transpose(y),alpha) + \
+#                np.sum(np.log(np.diag(L))) + 0.5*N*np.log(2.0*np.pi)
+#         return NLML
+#
+#     def train(self, batch, rng_key, num_restarts = 10):
+#         # Define objective that returns NumPy arrays
+#         def objective(params):
+#             value, grads = self.likelihood_value_and_grad(params, batch)
+#             out = (onp.array(value), onp.array(grads))
+#             return out
+#         # Optimize with random restarts
+#         params = []
+#         likelihood = []
+#         dim = batch['X'].shape[1]
+#         rng_key = random.split(rng_key, num_restarts)
+#         for i in range(num_restarts):
+#             init = initializers.random_init_SparseGP(rng_key[i], dim)
+#             p, val = minimize_lbfgs(objective, init)
+#             print('Likelihood: %e' % (val))
+#             params.append(p)
+#             likelihood.append(val)
+#         params = np.vstack(params)
+#         likelihood = np.vstack(likelihood)
+#         #### find the best likelihood besides nan ####
+#         bestlikelihood = np.nanmin(likelihood)
+#         idx_best = np.where(likelihood == bestlikelihood)
+#         idx_best = idx_best[0][0]
+#         best_params = params[idx_best,:]
+#
+#         return best_params
+#
+#     @partial(jit, static_argnums=(0,))
+#     def predict(self, X_star, **kwargs):
+#         params = kwargs['params']
+#         batch = kwargs['batch']
+#         bounds = kwargs['bounds']
+#         norm_const = kwargs['norm_const']
+#         # Normalize to [0,1]
+#         X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+#         # Fetch normalized training data
+#         X, y = batch['X'], batch['y']
+#         Z = batch['Z']
+#         N, D = X.shape
+#         M = Z.shape[0]
+#         # Fetch params
+#         sigma_n = np.exp(params[-1])
+#         theta = np.exp(params[:-1])
+#         # Compute kernels
+#         k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(sigma_n + 1e-8)
+#         k_pX = self.kernel(X_star, X, theta)
+#         # Inverse covariance at training locations
+#         K_zz = self.kernel(Z, Z, theta)
+#         K_zx = self.kernel(Z, X, theta)
+#         K = K_zz + np.matmul(K_zx, K_zx.T)/sigma_n + np.eye(M)*1e-8
+#         L = cholesky(K, lower=True)
+#         beta = solve_triangular(L.T,solve_triangular(L, K_zx, lower=True))
+#         K_inv = np.eye(N)/sigma_n - np.matmul(K_zx.T, beta)/sigma_n**2
+#         # Perform predictions
+#         alpha = np.matmul(K_inv, y)
+#         beta  = np.matmul(K_inv, k_pX.T)
+#         # Compute predictive mean, std
+#         mu = np.matmul(k_pX, alpha)
+#         cov = k_pp - np.matmul(k_pX, beta)
+#         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+#         # Denormalize
+#         mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
+#         std = std*norm_const['sigma_y']
+#         return mu, std
+
+
 # A minimal ManifoldGP regression class (inherits from GPmodel)
 class ManifoldGP(GPmodel):
     # Initialize the class
