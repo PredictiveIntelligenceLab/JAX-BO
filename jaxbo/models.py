@@ -100,7 +100,8 @@ class GPmodel():
             return acquisitions.LCB(mean, std, kappa)
         elif self.options['criterion'] == 'EI':
             batch = kwargs['batch']
-            best = np.min(batch['y'])
+            norm_const = kwargs['norm_const']
+            best = np.min(batch['y'])*norm_const['sigma_y'] + norm_const['mu_y']
             return acquisitions.EI(mean, std, best)
         elif self.options['criterion'] == 'US':
             return acquisitions.US(std)
@@ -299,10 +300,12 @@ class MultipleIndependentOutputsGP(GPmodel):
             params = np.vstack(params)
             likelihood = np.vstack(likelihood)
             #### find the best likelihood besides nan ####
+            #print("likelihood", likelihood)
             bestlikelihood = np.nanmin(likelihood)
             idx_best = np.where(likelihood == bestlikelihood)
             idx_best = idx_best[0][0]
             best_params.append(params[idx_best,:])
+            #print("best_params", best_params)
         return best_params
 
     @partial(jit, static_argnums=(0,))
@@ -345,11 +348,17 @@ class MultipleIndependentOutputsGP(GPmodel):
         mean, std = self.predict(x, **kwargs)
         if self.options['criterion'] == 'EIC':
             batch_list = kwargs['batch']
-            best = np.min(batch_list[0]['y'])
-            return acquisitions.EIC(mean, std, best)
+            norm_const = kwargs['norm_const'][0]
+            best = np.min(batch_list[0]['y'])*norm_const['sigma_y'] + norm_const['mu_y'] 
+            return acquisitions.EIC(mean, std, norm_const, best) 
         elif self.options['criterion'] == 'LCBC':
             kappa = kwargs['kappa']
-            return acquisitions.LCB(mean, std, kappa)
+            ##### normalize the mean and std again and subtract the mean by 2*sigma
+            norm_const = kwargs['norm_const'][0]
+            #mean[0,:] = (mean[0,:] - norm_const['mu_y']) / norm_const['sigma_y'] - 2 * norm_const['sigma_y']
+            #std[0,:] = std[0,:] / norm_const['sigma_y']
+            #####
+            return acquisitions.LCBC(mean, std, norm_const, kappa)
         else:
             raise NotImplementedError
 
