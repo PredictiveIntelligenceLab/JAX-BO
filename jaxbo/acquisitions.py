@@ -16,7 +16,7 @@ def EI(mean, std, best):
     return -EI[0]
 
 @jit
-def EIC(mean, std, norm_const, best):
+def EIC(mean, std, best):
     # Constrained expected improvement
     delta = -(mean[0,:] - best)
     deltap = -(mean[0,:] - best)
@@ -48,9 +48,15 @@ def EIC(mean, std, norm_const, best):
 
 
 @jit
-def LCBC(mean, std, norm_const, kappa = 2.0):
-    threshold = 3.0
-    lcb = (mean[0,:] - norm_const['mu_y']) / norm_const['sigma_y'] - threshold - kappa*std[0,:] / norm_const['sigma_y']
+def LCBC(mean, std, kappa = 2.0, threshold = 3.0):
+    lcb = mean[0,:] - threshold - kappa*std[0,:]
+    constraints = np.prod(norm.cdf(mean[1:,:]/std[1:,:]), axis = 0)
+    return lcb[0]*constraints[0]
+
+
+@jit
+def LW_LCBC(mean, std, weights, kappa = 2.0, threshold = 3.0):
+    lcb = mean[0,:] - threshold - kappa*std[0,:]*weights
     constraints = np.prod(norm.cdf(mean[1:,:]/std[1:,:]), axis = 0)
     return lcb[0]*constraints[0]
 
