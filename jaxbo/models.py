@@ -64,6 +64,7 @@ class GPmodel():
         # Sample data according to prior
         X_samples = lb + (ub-lb)*lhs(dim, N_samples) # self.input_prior.sample(rng_key, N_samples)
         y_samples = self.predict(X_samples, **kwargs)[0]
+
         # Compute p_x and p_y from samples across the entire domain
         p_x = self.input_prior.pdf(X)
         p_x_samples = self.input_prior.pdf(X_samples)
@@ -100,8 +101,7 @@ class GPmodel():
             return acquisitions.LCB(mean, std, kappa)
         elif self.options['criterion'] == 'EI':
             batch = kwargs['batch']
-            norm_const = kwargs['norm_const']
-            best = np.min(batch['y'])*norm_const['sigma_y'] + norm_const['mu_y']
+            best = np.min(batch['y'])
             return acquisitions.EI(mean, std, best)
         elif self.options['criterion'] == 'US':
             return acquisitions.US(std)
@@ -206,7 +206,7 @@ class GP(GPmodel):
         return best_params
 
     @partial(jit, static_argnums=(0,))
-    def predict(self, X_star, **kwargs):
+    def predict(self, X_star,  **kwargs):
         params = kwargs['params']
         batch = kwargs['batch']
         bounds = kwargs['bounds']
@@ -228,9 +228,7 @@ class GP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-        # Denormalize
-        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']
+
         return mu, std
 
     @partial(jit, static_argnums=(0,))
@@ -257,7 +255,6 @@ class GP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         sample = random.multivariate_normal(rng_key, mu, cov)
-        sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
         return sample
 
 
@@ -335,12 +332,50 @@ class MultipleIndependentOutputsGP(GPmodel):
             mu = np.matmul(k_pX, alpha)
             cov = k_pp - np.matmul(k_pX, beta)
             std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-            # Denormalize
-            mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-            std = std*norm_const['sigma_y']
             mu_list.append(mu)
             std_list.append(std)
         return np.array(mu_list), np.array(std_list)
+
+    def fit_gmm(self, num_comp = 2, N_samples = 10000, **kwargs):
+        bounds = kwargs['bounds']
+        rng_key = kwargs['rng_key']
+        lb = bounds['lb']
+        ub = bounds['ub']
+        dim = lb.shape[0]
+        # Sample data across the entire domain
+        X = lb + (ub-lb)*lhs(dim, N_samples)
+
+        # We only keep the first row that correspond to the objective prediction and same for y_samples
+        y = self.predict(X, **kwargs)[0][0,:]
+
+        # Sample data according to prior
+        X_samples = lb + (ub-lb)*lhs(dim, N_samples) # self.input_prior.sample(rng_key, N_samples)
+        y_samples = self.predict(X_samples, **kwargs)[0][0,:]
+
+
+        # Compute p_x and p_y from samples across the entire domain
+        p_x = self.input_prior.pdf(X)
+        p_x_samples = self.input_prior.pdf(X_samples)
+
+        p_y = utils.fit_kernel_density(y_samples, y, weights = p_x_samples)
+        weights = p_x/p_y
+        # Label each input data
+        indices = np.arange(N_samples)
+        # Scale inputs to [0, 1]^D
+        X = (X - lb) / (ub - lb)
+        # rescale weights as probability distribution
+        weights = weights / np.sum(weights)
+        # Sample from analytical w
+        idx = onp.random.choice(indices,
+                                N_samples,
+                                p=weights.flatten())
+        X_train = X[idx]
+        # fit GMM
+        clf = mixture.GaussianMixture(n_components=num_comp,
+                                      covariance_type='full')
+        clf.fit(X_train)
+        return clf.weights_, clf.means_, clf.covariances_
+
 
     @partial(jit, static_argnums=(0,))
     def acquisition(self, x, **kwargs):
@@ -348,17 +383,21 @@ class MultipleIndependentOutputsGP(GPmodel):
         mean, std = self.predict(x, **kwargs)
         if self.options['criterion'] == 'EIC':
             batch_list = kwargs['batch']
-            norm_const = kwargs['norm_const'][0]
-            best = np.min(batch_list[0]['y'])*norm_const['sigma_y'] + norm_const['mu_y'] 
-            return acquisitions.EIC(mean, std, norm_const, best) 
+            best = np.min(batch_list[0]['y']) 
+            return acquisitions.EIC(mean, std, best) 
         elif self.options['criterion'] == 'LCBC':
             kappa = kwargs['kappa']
             ##### normalize the mean and std again and subtract the mean by 2*sigma
-            norm_const = kwargs['norm_const'][0]
-            #mean[0,:] = (mean[0,:] - norm_const['mu_y']) / norm_const['sigma_y'] - 2 * norm_const['sigma_y']
+            #norm_const = kwargs['norm_const'][0]
+            #mean[0,:] = (mean[0,:] - norm_const['mu_y']) / norm_const['sigma_y'] - 3 * norm_const['sigma_y']
             #std[0,:] = std[0,:] / norm_const['sigma_y']
             #####
-            return acquisitions.LCBC(mean, std, norm_const, kappa)
+            return acquisitions.LCBC(mean, std, kappa)
+        elif self.options['criterion'] == 'LW_LCBC':
+            kappa = kwargs['kappa']
+            ##### normalize the mean and std again and subtract the mean by 3*sigma
+            weights = utils.compute_w_gmm(x, **kwargs)
+            return acquisitions.LW_LCBC(mean, std, weights, kappa)
         else:
             raise NotImplementedError
 
@@ -389,7 +428,6 @@ class MultipleIndependentOutputsGP(GPmodel):
             mu = np.matmul(k_pX, alpha)
             cov = k_pp - np.matmul(k_pX, beta)
             sample = random.multivariate_normal(rng_key, mu, cov)
-            sample = sample*norm_const['sigma_y'] + norm_const['mu_y']
             sample_list.append(sample)
         return np.array(sample)
 
@@ -580,9 +618,7 @@ class ManifoldGP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-        # Denormalize
-        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']
+
         return mu, std
 
 
@@ -672,9 +708,7 @@ class MultifidelityGP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-        # Denormalize
-        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']
+
         return mu, std
 
 # A minimal GradientGP regression class (inherits from GPmodel)
@@ -764,9 +798,7 @@ class GradientGP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-        # Denormalize
-        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']
+
         return mu, std
 
 # A minimal ManifoldGP regression class (inherits from GPmodel)
@@ -858,9 +890,7 @@ class MissingInputsGP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-        # Denormalize
-        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']
+
         return mu, std
 
 # A minimal MultifidelityGP regression class (inherits from GPmodel)
@@ -972,9 +1002,7 @@ class DeepMultifidelityGP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-        # Denormalize
-        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']
+
         return mu, std
 
 # A minimal MultifidelityGP regression class for heterogeneous inputs (inherits from GPmodel)
@@ -1085,9 +1113,7 @@ class HeterogeneousMultifidelityGP_v2(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-        # Denormalize
-        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']
+
         return mu, std
 
 
@@ -1210,9 +1236,7 @@ class ManifoldMultifidelityGP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-        # Denormalize
-        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']
+
         return mu, std
 
 # A minimal MultifidelityGP regression class for heterogeneous inputs (inherits from GPmodel)
@@ -1322,7 +1346,5 @@ class HeterogeneousMultifidelityGP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-        # Denormalize
-        mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
-        std = std*norm_const['sigma_y']
+
         return mu, std
