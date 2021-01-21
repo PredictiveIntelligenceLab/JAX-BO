@@ -10,6 +10,10 @@ from scipy.interpolate import interp1d
 
 from scipy.stats import gaussian_kde
 
+#import matplotlib.pyplot as plt
+
+
+
 @jit
 def normalize(X, y, bounds):
     mu_y, sigma_y = y.mean(0), y.std(0)
@@ -127,7 +131,14 @@ def fit_kernel_density(X, xi, weights = None, bw=None):
         if bw < 1e-8:
             bw = 1.0
 
+    #print("bw", bw)
+
     kde_pdf_x, kde_pdf_y = FFTKDE(bw=bw).fit(X, weights).evaluate()
+
+
+    #plt.hist(X, bins = 50, density = True)
+    #plt.plot(kde_pdf_x, kde_pdf_y, 'r-')
+    #plt.show()
 
     # Define the interpolation function
     interp1d_fun = interp1d(kde_pdf_x,
