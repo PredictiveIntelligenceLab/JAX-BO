@@ -15,6 +15,9 @@ from jaxbo.optimizers import minimize_lbfgs
 from sklearn import mixture
 from pyDOE import lhs
 
+from jax.scipy.stats import norm
+
+#onp.random.seed(1234)
 
 # Define a general master class
 class GPmodel():
@@ -54,15 +57,25 @@ class GPmodel():
 
     def fit_gmm(self, num_comp = 2, N_samples = 10000, **kwargs):
         bounds = kwargs['bounds']
-        rng_key = kwargs['rng_key']
         lb = bounds['lb']
         ub = bounds['ub']
+        # load the seed 
+        rng_key = kwargs['rng_key']
         dim = lb.shape[0]
         # Sample data across the entire domain
+
+        # set the seed for sampling X
+        onp.random.seed(rng_key[0])
         X = lb + (ub-lb)*lhs(dim, N_samples)
+
         y = self.predict(X, **kwargs)[0]
         # Sample data according to prior
-        X_samples = lb + (ub-lb)*lhs(dim, N_samples) # self.input_prior.sample(rng_key, N_samples)
+
+        # set the seed for sampling X_samples
+        rng_key = random.split(rng_key)[0]
+        onp.random.seed(rng_key[0])
+
+        X_samples = lb + (ub-lb)*lhs(dim, N_samples) 
         y_samples = self.predict(X_samples, **kwargs)[0]
 
         # Compute p_x and p_y from samples across the entire domain
@@ -140,8 +153,12 @@ class GPmodel():
         bounds = kwargs['bounds']
         lb = bounds['lb']
         ub = bounds['ub']
+        rng_key = kwargs['rng_key']
         dim = lb.shape[0]
+
+        onp.random.seed(rng_key[0])
         x0 = lb + (ub-lb)*lhs(dim, num_restarts)
+        #print("x0 for bfgs", x0)
         dom_bounds = tuple(map(tuple, np.vstack((lb, ub)).T))
         for i in range(num_restarts):
             pos, val = minimize_lbfgs(objective, x0[i,:], bnds = dom_bounds)
@@ -314,9 +331,10 @@ class MultipleIndependentOutputsGP(GPmodel):
         bounds = kwargs['bounds']
         norm_const_list = kwargs['norm_const']
         zipped_args = zip(params_list, batch_list, norm_const_list)
-        for _, (params, batch, norm_const) in enumerate(zipped_args):
-            # Normalize to [0,1]
-            X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Normalize to [0,1] (We should do this for once instead of iteratively doing so in the for loop)
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        
+        for k, (params, batch, norm_const) in enumerate(zipped_args):
             # Fetch normalized training data
             X, y = batch['X'], batch['y']
             # Fetch params
@@ -332,24 +350,44 @@ class MultipleIndependentOutputsGP(GPmodel):
             mu = np.matmul(k_pX, alpha)
             cov = k_pp - np.matmul(k_pX, beta)
             std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+            if k > 0:
+                mu = mu*norm_const['sigma_y'] + norm_const['mu_y']
+                std = std*norm_const['sigma_y']
             mu_list.append(mu)
             std_list.append(std)
         return np.array(mu_list), np.array(std_list)
 
     def fit_gmm(self, num_comp = 2, N_samples = 10000, **kwargs):
         bounds = kwargs['bounds']
-        rng_key = kwargs['rng_key']
         lb = bounds['lb']
         ub = bounds['ub']
+
+        # load the seed 
+        rng_key = kwargs['rng_key']
         dim = lb.shape[0]
         # Sample data across the entire domain
+        X = lb + (ub-lb)*lhs(dim, N_samples)
+
+        # set the seed for sampling X
+        onp.random.seed(rng_key[0])
         X = lb + (ub-lb)*lhs(dim, N_samples)
 
         # We only keep the first row that correspond to the objective prediction and same for y_samples
         y = self.predict(X, **kwargs)[0][0,:]
 
-        # Sample data according to prior
-        X_samples = lb + (ub-lb)*lhs(dim, N_samples) # self.input_prior.sample(rng_key, N_samples)
+        # Prediction of the constraints
+        mu, std = self.predict(X, **kwargs)
+        mu_c, std_c = mu[1:,:], std[1:,:]
+
+        #print('mu_c', 'std_c', mu_c.shape, std_c.shape)
+        constraint_w = np.prod(norm.cdf(mu_c/std_c), axis = 0)
+        #print("constraint_w", constraint_w.shape)
+
+        # set the seed for sampling X_samples
+        rng_key = random.split(rng_key)[0]
+        onp.random.seed(rng_key[0])        
+
+        X_samples = lb + (ub-lb)*lhs(dim, N_samples) 
         y_samples = self.predict(X_samples, **kwargs)[0][0,:]
 
 
@@ -358,7 +396,9 @@ class MultipleIndependentOutputsGP(GPmodel):
         p_x_samples = self.input_prior.pdf(X_samples)
 
         p_y = utils.fit_kernel_density(y_samples, y, weights = p_x_samples)
-        weights = p_x/p_y
+
+        #print("constraint_w", constraint_w.shape, "p_x", p_x.shape)
+        weights = p_x/p_y*constraint_w
         # Label each input data
         indices = np.arange(N_samples)
         # Scale inputs to [0, 1]^D
