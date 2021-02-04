@@ -59,7 +59,7 @@ class GPmodel():
         bounds = kwargs['bounds']
         lb = bounds['lb']
         ub = bounds['ub']
-        # load the seed 
+        # load the seed
         rng_key = kwargs['rng_key']
         dim = lb.shape[0]
         # Sample data across the entire domain
@@ -75,7 +75,7 @@ class GPmodel():
         rng_key = random.split(rng_key)[0]
         onp.random.seed(rng_key[0])
 
-        X_samples = lb + (ub-lb)*lhs(dim, N_samples) 
+        X_samples = lb + (ub-lb)*lhs(dim, N_samples)
         y_samples = self.predict(X_samples, **kwargs)[0]
 
         # Compute p_x and p_y from samples across the entire domain
@@ -323,7 +323,7 @@ class MultipleIndependentOutputsGP(GPmodel):
         return best_params
 
     @partial(jit, static_argnums=(0,))
-    def predict(self, X_star, **kwargs):
+    def predict_all(self, X_star, **kwargs):
         mu_list = []
         std_list = []
         params_list =  kwargs['params']
@@ -333,7 +333,7 @@ class MultipleIndependentOutputsGP(GPmodel):
         zipped_args = zip(params_list, batch_list, norm_const_list)
         # Normalize to [0,1] (We should do this for once instead of iteratively doing so in the for loop)
         X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
-        
+
         for k, (params, batch, norm_const) in enumerate(zipped_args):
             # Fetch normalized training data
             X, y = batch['X'], batch['y']
@@ -357,12 +357,99 @@ class MultipleIndependentOutputsGP(GPmodel):
             std_list.append(std)
         return np.array(mu_list), np.array(std_list)
 
+    @partial(jit, static_argnums=(0,))
+    def predict(self, X_star,  **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const = kwargs['norm_const']
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
+        X, y = batch['X'], batch['y']
+        # Fetch params
+        sigma_n = np.exp(params[-1])
+        theta = np.exp(params[:-1])
+        # Compute kernels
+        k_pp = self.kernel(X_star, X_star, theta) + np.eye(X_star.shape[0])*(sigma_n + 1e-8)
+        k_pX = self.kernel(X_star, X, theta)
+        L = self.compute_cholesky(params, batch)
+        alpha = solve_triangular(L.T,solve_triangular(L, y, lower=True))
+        beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+        # Compute predictive mean, std
+        mu = np.matmul(k_pX, alpha)
+        cov = k_pp - np.matmul(k_pX, beta)
+        std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+        return mu, std
+
+    @partial(jit, static_argnums=(0,))
+    def constrained_acquisition(self, x, **kwargs):
+        x = x[None,:]
+        mean, std = self.predict_all(x, **kwargs)
+        if self.options['constrained_criterion'] == 'EIC':
+            batch_list = kwargs['batch']
+            best = np.min(batch_list[0]['y'])
+            return acquisitions.EIC(mean, std, best)
+        elif self.options['constrained_criterion'] == 'LCBC':
+            kappa = kwargs['kappa']
+            ##### normalize the mean and std again and subtract the mean by 2*sigma
+            #norm_const = kwargs['norm_const'][0]
+            #mean[0,:] = (mean[0,:] - norm_const['mu_y']) / norm_const['sigma_y'] - 3 * norm_const['sigma_y']
+            #std[0,:] = std[0,:] / norm_const['sigma_y']
+            #####
+            return acquisitions.LCBC(mean, std, kappa)
+        elif self.options['constrained_criterion'] == 'LW_LCBC':
+            kappa = kwargs['kappa']
+            ##### normalize the mean and std again and subtract the mean by 3*sigma
+            weights = utils.compute_w_gmm(x, **kwargs)
+            return acquisitions.LW_LCBC(mean, std, weights, kappa)
+        else:
+            raise NotImplementedError
+
+    @partial(jit, static_argnums=(0,))
+    def constrained_acq_value_and_grad(self, x, **kwargs):
+        fun = lambda x: self.constrained_acquisition(x, **kwargs)
+        primals, f_vjp = vjp(fun, x)
+        grads = f_vjp(np.ones_like(primals))[0]
+        return primals, grads
+
+    def constrained_compute_next_point_lbfgs(self, num_restarts = 10, **kwargs):
+        # Define objective that returns NumPy arrays
+        def objective(x):
+            value, grads = self.constrained_acq_value_and_grad(x, **kwargs)
+            out = (onp.array(value), onp.array(grads))
+            return out
+        # Optimize with random restarts
+        loc = []
+        acq = []
+        bounds = kwargs['bounds']
+        lb = bounds['lb']
+        ub = bounds['ub']
+        rng_key = kwargs['rng_key']
+        dim = lb.shape[0]
+
+        onp.random.seed(rng_key[0])
+        x0 = lb + (ub-lb)*lhs(dim, num_restarts)
+        #print("x0 for bfgs", x0)
+        dom_bounds = tuple(map(tuple, np.vstack((lb, ub)).T))
+        for i in range(num_restarts):
+            pos, val = minimize_lbfgs(objective, x0[i,:], bnds = dom_bounds)
+            loc.append(pos)
+            acq.append(val)
+        loc = np.vstack(loc)
+        acq = np.vstack(acq)
+        idx_best = np.argmin(acq)
+        x_new = loc[idx_best:idx_best+1,:]
+        return x_new
+
+
+
     def fit_gmm(self, num_comp = 2, N_samples = 10000, **kwargs):
         bounds = kwargs['bounds']
         lb = bounds['lb']
         ub = bounds['ub']
 
-        # load the seed 
+        # load the seed
         rng_key = kwargs['rng_key']
         dim = lb.shape[0]
         # Sample data across the entire domain
@@ -385,9 +472,9 @@ class MultipleIndependentOutputsGP(GPmodel):
 
         # set the seed for sampling X_samples
         rng_key = random.split(rng_key)[0]
-        onp.random.seed(rng_key[0])        
+        onp.random.seed(rng_key[0])
 
-        X_samples = lb + (ub-lb)*lhs(dim, N_samples) 
+        X_samples = lb + (ub-lb)*lhs(dim, N_samples)
         y_samples = self.predict(X_samples, **kwargs)[0][0,:]
 
 
@@ -417,29 +504,6 @@ class MultipleIndependentOutputsGP(GPmodel):
         return clf.weights_, clf.means_, clf.covariances_
 
 
-    @partial(jit, static_argnums=(0,))
-    def acquisition(self, x, **kwargs):
-        x = x[None,:]
-        mean, std = self.predict(x, **kwargs)
-        if self.options['criterion'] == 'EIC':
-            batch_list = kwargs['batch']
-            best = np.min(batch_list[0]['y']) 
-            return acquisitions.EIC(mean, std, best) 
-        elif self.options['criterion'] == 'LCBC':
-            kappa = kwargs['kappa']
-            ##### normalize the mean and std again and subtract the mean by 2*sigma
-            #norm_const = kwargs['norm_const'][0]
-            #mean[0,:] = (mean[0,:] - norm_const['mu_y']) / norm_const['sigma_y'] - 3 * norm_const['sigma_y']
-            #std[0,:] = std[0,:] / norm_const['sigma_y']
-            #####
-            return acquisitions.LCBC(mean, std, kappa)
-        elif self.options['criterion'] == 'LW_LCBC':
-            kappa = kwargs['kappa']
-            ##### normalize the mean and std again and subtract the mean by 3*sigma
-            weights = utils.compute_w_gmm(x, **kwargs)
-            return acquisitions.LW_LCBC(mean, std, weights, kappa)
-        else:
-            raise NotImplementedError
 
     @partial(jit, static_argnums=(0,))
     def draw_posterior_sample(self, X_star, **kwargs):
