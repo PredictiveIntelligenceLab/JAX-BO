@@ -25,34 +25,12 @@ def EIC(mean, std, best):
     EI = deltap - np.abs(deltap)*norm.cdf(-Z) + std*norm.pdf(Z)
     constraints = np.prod(norm.cdf(mean[1:,:]/std[1:,:]), axis = 0)
     return -EI[0]*constraints[0]
-    
-    # Normalized constrainted EI
-#    mu_y = norm_const['mu_y']
-#    sigma_y = norm_const['sigma_y']
-#    delta = -(mean[0,:] - best) / sigma_y
-#    deltap = -(mean[0,:] - best) / sigma_y
-#    deltap = np.clip(deltap, a_min=0.)
-#    Z = delta/(std[0,:]/sigma_y)
-#    EI = deltap - np.abs(deltap)*norm.cdf(-Z) + std*norm.pdf(Z)
-#    constraints = np.prod(norm.cdf(mean[1:,:]/std[1:,:]), axis = 0)
-#    return -EI[0]*constraints[0]
-    
-#    xi = 0.01
-#    mu_y = norm_const['mu_y']
-#    sigma_y = norm_const['sigma_y']
-#    imp = -(mean[0,:] - best + xi) / sigma_y
-#    Z = imp / (std[0,:]/sigma_y)
-#    EI = (imp * norm.cdf(Z) + (std[0,:]/sigma_y) * norm.pdf(Z)) * np.clip(std[0,:], a_min=0.)
-#    constraints = np.prod(norm.cdf(mean[1:,:]/std[1:,:]), axis = 0)
-#    return -EI[0]*constraints[0]
-
 
 @jit
 def LCBC(mean, std, kappa = 2.0, threshold = 3.0):
     lcb = mean[0,:] - threshold - kappa*std[0,:]
     constraints = np.prod(norm.cdf(mean[1:,:]/std[1:,:]), axis = 0)
     return lcb[0]*constraints[0]
-
 
 @jit
 def LW_LCBC(mean, std, weights, kappa = 2.0, threshold = 3.0):
