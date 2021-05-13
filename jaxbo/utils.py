@@ -118,7 +118,6 @@ def compute_w_gmm(x, **kwargs):
     return w
 
 def fit_kernel_density(X, xi, weights = None, bw=None):
-#    kde_pdf_x, kde_pdf_y  = FFTKDE().fit(onp.array(X)).evaluate()
 
     X, weights = onp.array(X), onp.array(weights)
     X = X.flatten()
@@ -131,14 +130,8 @@ def fit_kernel_density(X, xi, weights = None, bw=None):
         if bw < 1e-8:
             bw = 1.0
 
-    #print("bw", bw)
 
     kde_pdf_x, kde_pdf_y = FFTKDE(bw=bw).fit(X, weights).evaluate()
-
-
-    #plt.hist(X, bins = 50, density = True)
-    #plt.plot(kde_pdf_x, kde_pdf_y, 'r-')
-    #plt.show()
 
     # Define the interpolation function
     interp1d_fun = interp1d(kde_pdf_x,
