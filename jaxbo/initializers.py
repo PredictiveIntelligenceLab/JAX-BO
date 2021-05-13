@@ -37,11 +37,3 @@ def random_init_SparseGP(rng_key, dim):
     hyp = np.concatenate([logsigma_f, loglength, logsigma_n])
     return hyp
 
-# def random_init_SparseGP(rng_key, dim, X, M):
-#     logsigma_f = np.log(50.0*random.uniform(rng_key, (1,)))
-#     loglength  = np.log(random.uniform(rng_key, (dim,)) + 1e-8)
-#     logsigma_n = np.array([-4.0]) + random.normal(rng_key, (1,))
-#     hyp = np.concatenate([logsigma_f, loglength, logsigma_n])
-#     kmeans = KMeans(n_clusters=M, random_state=0).fit(X)
-#     Z =
-#     return hyp, Z
