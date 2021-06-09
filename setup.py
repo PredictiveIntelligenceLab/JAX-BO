@@ -28,8 +28,8 @@ INSTALL_REQUIRES = [
     'jaxlib>=0.1.37',
     'sklearn',
     'KDEpy',
-    'pyDOE',
-    'numpyro'
+    'pyDOE'#,
+    #'numpyro'
 ]
 
 setuptools.setup(
