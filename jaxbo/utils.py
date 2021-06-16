@@ -1,6 +1,6 @@
 import numpy as onp
 import jax.numpy as np
-from jax import jit, vmap
+from jax import jit, vmap, random
 from jax.experimental import stax
 from jax.experimental.stax import Dense, Tanh
 from jax.nn.initializers import glorot_normal, normal
@@ -156,3 +156,26 @@ def init_NN(Q):
                   b_init=normal(dtype=np.float64)))
     net_init, net_apply = stax.serial(*layers)
     return net_init, net_apply
+
+def init_ResNet(layers, depth):
+    ''' MLP blocks with residual connections'''
+    def init(rng_key):
+        # Initialize neural net params
+        def init_layer(key, d_in, d_out):
+            k1, k2 = random.split(key)
+            W = random.normal(k1, (d_in, d_out))
+            b = random.normal(k2, (d_out,))
+            return W, b
+        key, *keys = random.split(rng_key, len(layers))
+        params = list(map(init_layer, keys, layers[:-1], layers[1:]))
+        return params
+    def mlp(params, inputs):
+        for W, b in params:
+            outputs = np.dot(inputs, W) + b
+            inputs = np.tanh(outputs)
+        return outputs
+    def apply(params, inputs):
+        for i in range(depth):
+            outputs = mlp(params, inputs) + inputs
+        return outputs
+    return init, apply
