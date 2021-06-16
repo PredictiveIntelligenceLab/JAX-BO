@@ -19,7 +19,7 @@ from jax.scipy.stats import norm
 
 #onp.random.seed(1234)
 
-# Define a general master class
+# Define a general master class 
 class GPmodel():
     def __init__(self, options):
         # Initialize the class
@@ -738,10 +738,11 @@ class MultifidelityGP(GPmodel):
 # A minimal MultifidelityGP regression class (inherits from GPmodel)
 class DeepMultifidelityGP(GPmodel):
     # Initialize the class
-    def __init__(self, options, layers):
+    def __init__(self, options, layers, depth=1):
         super().__init__(options)
         self.layers = layers
         self.net_init, self.net_apply = utils.init_NN(layers)
+        self.net_init, self.net_apply = utils.init_ResNet(layers,depth)
         # Determine parameter IDs
         nn_params = self.net_init(random.PRNGKey(0), (-1, layers[0]))[1]
         nn_params_flat, self.unravel = ravel_pytree(nn_params)
