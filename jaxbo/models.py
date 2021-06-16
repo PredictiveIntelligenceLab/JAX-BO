@@ -738,7 +738,7 @@ class MultifidelityGP(GPmodel):
 # A minimal MultifidelityGP regression class (inherits from GPmodel)
 class DeepMultifidelityGP(GPmodel):
     # Initialize the class
-    def __init__(self, options, layers, depth=1):
+    def __init__(self, options, layers, depth):
         super().__init__(options)
         self.layers = layers
         #self.net_init, self.net_apply = utils.init_NN(layers)
