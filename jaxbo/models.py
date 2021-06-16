@@ -744,7 +744,8 @@ class DeepMultifidelityGP(GPmodel):
         #self.net_init, self.net_apply = utils.init_NN(layers)
         self.net_init, self.net_apply = utils.init_ResNet(layers,depth)
         # Determine parameter IDs
-        nn_params = self.net_init(random.PRNGKey(0), (-1, layers[0]))[1]
+        #nn_params = self.net_init(random.PRNGKey(0), (-1, layers[0]))[1]
+        nn_params = self.net_init(random.PRNGKey(0))
         nn_params_flat, self.unravel = ravel_pytree(nn_params)
         num_nn_params = len(nn_params_flat)
         num_gp_params = initializers.random_init_MultifidelityGP(random.PRNGKey(0), layers[-1]).shape[0]
@@ -791,7 +792,8 @@ class DeepMultifidelityGP(GPmodel):
         for i in range(num_restarts):
             key1, key2 = random.split(rng_key[i])
             gp_params = initializers.random_init_MultifidelityGP(key1, dim)
-            nn_params = self.net_init(key2,  (-1, self.layers[0]))[1]
+            #nn_params = self.net_init(key2,  (-1, self.layers[0]))[1]
+            nn_params = self.net_init(key2)
             init_params = np.concatenate([gp_params, ravel_pytree(nn_params)[0]])
             p, val = minimize_lbfgs(objective, init_params)
             params.append(p)
