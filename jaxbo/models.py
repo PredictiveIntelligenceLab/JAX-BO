@@ -741,7 +741,7 @@ class DeepMultifidelityGP(GPmodel):
     def __init__(self, options, layers, depth=1):
         super().__init__(options)
         self.layers = layers
-        self.net_init, self.net_apply = utils.init_NN(layers)
+        #self.net_init, self.net_apply = utils.init_NN(layers)
         self.net_init, self.net_apply = utils.init_ResNet(layers,depth)
         # Determine parameter IDs
         nn_params = self.net_init(random.PRNGKey(0), (-1, layers[0]))[1]
