@@ -778,7 +778,7 @@ class DeepMultifidelityGP(GPmodel):
         L = cholesky(K, lower=True)
         return L
 
-    def train(self, batch, rng_key, num_restarts = 10):
+    def train(self, batch, rng_key, num_restarts = 10, verbose=False):
         # Define objective that returns NumPy arrays
         def objective(params):
             value, grads = self.likelihood_value_and_grad(params, batch)
@@ -795,7 +795,7 @@ class DeepMultifidelityGP(GPmodel):
             #nn_params = self.net_init(key2,  (-1, self.layers[0]))[1]
             nn_params = self.net_init(key2)
             init_params = np.concatenate([gp_params, ravel_pytree(nn_params)[0]])
-            p, val = minimize_lbfgs(objective, init_params)
+            p, val = minimize_lbfgs(objective, init_params, verbose)
             params.append(p)
             likelihood.append(val)
         params = np.vstack(params)
