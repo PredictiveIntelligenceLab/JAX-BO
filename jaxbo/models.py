@@ -778,7 +778,7 @@ class DeepMultifidelityGP(GPmodel):
         L = cholesky(K, lower=True)
         return L
 
-    def train(self, batch, rng_key, num_restarts = 10, verbose=False, maxfun):
+    def train(self, batch, rng_key, num_restarts = 10, verbose=False, maxfun=15000):
         # Define objective that returns NumPy arrays
         def objective(params):
             value, grads = self.likelihood_value_and_grad(params, batch)
