@@ -163,8 +163,14 @@ def init_ResNet(layers, depth):
         # Initialize neural net params
         def init_layer(key, d_in, d_out):
             k1, k2 = random.split(key)
-            W = random.normal(k1, (d_in, d_out))
-            b = random.normal(k2, (d_out,))
+            
+            #W = random.normal(k1, (d_in, d_out))
+            #b = random.normal(k2, (d_out,))
+            
+            glorot_stddev = 1. / np.sqrt((d_in + d_out) / 2.)
+            W = glorot_stddev*random.normal(k1, (d_in, d_out))
+            b = np.zeros(d_out)
+            
             return W, b
         key, *keys = random.split(rng_key, len(layers))
         params = list(map(init_layer, keys, layers[:-1], layers[1:]))
