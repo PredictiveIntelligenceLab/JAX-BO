@@ -738,23 +738,22 @@ class MultifidelityGP(GPmodel):
 # A minimal MultifidelityGP regression class (inherits from GPmodel)
 class DeepMultifidelityGP(GPmodel):
     # Initialize the class
-    def __init__(self, options, layers, depth):
+    def __init__(self, options, layers, depth=2, is_spect=1):
         super().__init__(options)
         self.layers = layers
-        if self.options['net_arch'] == 'MLP':
+        if options['net_arch'] == 'MLP':
             self.net_init, self.net_apply = utils.init_NN(layers)
-            # Determine parameter IDs
             nn_params = self.net_init(random.PRNGKey(0), (-1, layers[0]))[1]
-        if self.options['net_arch'] == 'ResNet':
-            self.net_init, self.net_apply = utils.init_ResNet(layers,depth)
-            # Determine parameter IDs
+        if options['net_arch'] == 'ResNet':
+            self.net_init, self.net_apply = utils.init_ResNet(layers,depth,is_spect)
             nn_params = self.net_init(random.PRNGKey(0))
+        # Determine parameter IDs
         nn_params_flat, self.unravel = ravel_pytree(nn_params)
         num_nn_params = len(nn_params_flat)
         num_gp_params = initializers.random_init_MultifidelityGP(random.PRNGKey(0), layers[-1]).shape[0]
         self.gp_params_ids = np.arange(num_gp_params)
         self.nn_params_ids = np.arange(num_nn_params) + num_gp_params
-
+        
     @partial(jit, static_argnums=(0,))
     def compute_cholesky(self, params, batch):
         XL, XH = batch['XL'], batch['XH']
