@@ -157,7 +157,7 @@ def init_NN(Q):
     net_init, net_apply = stax.serial(*layers)
     return net_init, net_apply
 
-def init_ResNet(layers, depth):
+def init_ResNet(layers, depth, is_spect):
     ''' MLP blocks with residual connections'''
     def init(rng_key):
         # Initialize neural net params
@@ -169,19 +169,36 @@ def init_ResNet(layers, depth):
             
             glorot_stddev = 1. / np.sqrt((d_in + d_out) / 2.)
             W = glorot_stddev*random.normal(k1, (d_in, d_out))
+            if is_spect == 1:
+                W = W/np.linalg.norm(W)
+            
             b = np.zeros(d_out)
             
             return W, b
         key, *keys = random.split(rng_key, len(layers))
         params = list(map(init_layer, keys, layers[:-1], layers[1:]))
+        if is_spect == 1:
+            gamma = np.ones(layers[0])
+            beta = np.zeros(layers[0])
+            params.append(gamma)
+            params.append(beta)
         return params
     def mlp(params, inputs):
         for W, b in params:
             outputs = np.dot(inputs, W) + b
             inputs = np.tanh(outputs)
         return outputs
-    def apply(params, inputs):
-        for i in range(depth):
-            outputs = mlp(params, inputs) + inputs
-        return outputs
+    if is_spect == 1:
+        def apply(params, inputs):
+            inputs = params[-2]/np.sqrt(np.var(inputs, axis=0))*(inputs-np.mean(inputs, axis=0))+params[-1]
+            for i in range(depth):
+                #outputs = mlp(params, inputs) + inputs
+                outputs = mlp(params[:-2], inputs) + inputs
+            return outputs
+    else:
+        def apply(params, inputs):
+            for i in range(depth):
+                outputs = mlp(params, inputs) + inputs
+            return outputs
     return init, apply
+
