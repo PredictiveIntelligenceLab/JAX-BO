@@ -745,6 +745,67 @@ class ManifoldGP_MultiOutputs(GPmodel):
             
         return np.array(mu_list), np.array(std_list)
     
+    @partial(jit, static_argnums=(0,))
+    def constrained_acquisition(self, x, **kwargs):
+        x = x[None,:]
+        mean, std = self.predict_all(x, **kwargs)
+        if self.options['constrained_criterion'] == 'EIC':
+            batch_list = kwargs['batch']
+            best = np.min(batch_list[0]['y'])
+            return acquisitions.EIC(mean, std, best)
+        elif self.options['constrained_criterion'] == 'LCBC':
+            kappa = kwargs['kappa']
+            ##### normalize the mean and std again and subtract the mean by 2*sigma
+            #norm_const = kwargs['norm_const'][0]
+            #mean[0,:] = (mean[0,:] - norm_const['mu_y']) / norm_const['sigma_y'] - 3 * norm_const['sigma_y']
+            #std[0,:] = std[0,:] / norm_const['sigma_y']
+            #####
+            return acquisitions.LCBC(mean, std, kappa)
+        elif self.options['constrained_criterion'] == 'LW_LCBC':
+            kappa = kwargs['kappa']
+            ##### normalize the mean and std again and subtract the mean by 3*sigma
+            weights = utils.compute_w_gmm(x, **kwargs)
+            return acquisitions.LW_LCBC(mean, std, weights, kappa)
+        else:
+            raise NotImplementedError
+
+    @partial(jit, static_argnums=(0,))
+    def constrained_acq_value_and_grad(self, x, **kwargs):
+        fun = lambda x: self.constrained_acquisition(x, **kwargs)
+        primals, f_vjp = vjp(fun, x)
+        grads = f_vjp(np.ones_like(primals))[0]
+        return primals, grads
+
+    def constrained_compute_next_point_lbfgs(self, num_restarts = 10, **kwargs):
+        # Define objective that returns NumPy arrays
+        def objective(x):
+            value, grads = self.constrained_acq_value_and_grad(x, **kwargs)
+            out = (onp.array(value), onp.array(grads))
+            return out
+        # Optimize with random restarts
+        loc = []
+        acq = []
+        bounds = kwargs['bounds']
+        lb = bounds['lb']
+        ub = bounds['ub']
+        rng_key = kwargs['rng_key']
+        dim = lb.shape[0]
+
+        onp.random.seed(rng_key[0])
+        x0 = lb + (ub-lb)*lhs(dim, num_restarts)
+        #print("x0 for bfgs", x0)
+        dom_bounds = tuple(map(tuple, np.vstack((lb, ub)).T))
+        for i in range(num_restarts):
+            pos, val = minimize_lbfgs(objective, x0[i,:], bnds = dom_bounds)
+            loc.append(pos)
+            acq.append(val)
+        loc = np.vstack(loc)
+        acq = np.vstack(acq)
+        idx_best = np.argmin(acq)
+        x_new = loc[idx_best:idx_best+1,:]
+        return x_new, acq, loc
+    
+    
 
 # A minimal MultifidelityGP regression class (inherits from GPmodel)
 class MultifidelityGP(GPmodel):
@@ -1083,6 +1144,66 @@ class DeepMultifidelityGP_MultiOutputs(GPmodel):
             std_list.append(std)
             
         return np.array(mu_list), np.array(std_list)
+    
+    @partial(jit, static_argnums=(0,))
+    def constrained_acquisition(self, x, **kwargs):
+        x = x[None,:]
+        mean, std = self.predict_all(x, **kwargs)
+        if self.options['constrained_criterion'] == 'EIC':
+            batch_list = kwargs['batch']
+            best = np.min(batch_list[0]['y'])
+            return acquisitions.EIC(mean, std, best)
+        elif self.options['constrained_criterion'] == 'LCBC':
+            kappa = kwargs['kappa']
+            ##### normalize the mean and std again and subtract the mean by 2*sigma
+            #norm_const = kwargs['norm_const'][0]
+            #mean[0,:] = (mean[0,:] - norm_const['mu_y']) / norm_const['sigma_y'] - 3 * norm_const['sigma_y']
+            #std[0,:] = std[0,:] / norm_const['sigma_y']
+            #####
+            return acquisitions.LCBC(mean, std, kappa)
+        elif self.options['constrained_criterion'] == 'LW_LCBC':
+            kappa = kwargs['kappa']
+            ##### normalize the mean and std again and subtract the mean by 3*sigma
+            weights = utils.compute_w_gmm(x, **kwargs)
+            return acquisitions.LW_LCBC(mean, std, weights, kappa)
+        else:
+            raise NotImplementedError
+
+    @partial(jit, static_argnums=(0,))
+    def constrained_acq_value_and_grad(self, x, **kwargs):
+        fun = lambda x: self.constrained_acquisition(x, **kwargs)
+        primals, f_vjp = vjp(fun, x)
+        grads = f_vjp(np.ones_like(primals))[0]
+        return primals, grads
+
+    def constrained_compute_next_point_lbfgs(self, num_restarts = 10, **kwargs):
+        # Define objective that returns NumPy arrays
+        def objective(x):
+            value, grads = self.constrained_acq_value_and_grad(x, **kwargs)
+            out = (onp.array(value), onp.array(grads))
+            return out
+        # Optimize with random restarts
+        loc = []
+        acq = []
+        bounds = kwargs['bounds']
+        lb = bounds['lb']
+        ub = bounds['ub']
+        rng_key = kwargs['rng_key']
+        dim = lb.shape[0]
+
+        onp.random.seed(rng_key[0])
+        x0 = lb + (ub-lb)*lhs(dim, num_restarts)
+        #print("x0 for bfgs", x0)
+        dom_bounds = tuple(map(tuple, np.vstack((lb, ub)).T))
+        for i in range(num_restarts):
+            pos, val = minimize_lbfgs(objective, x0[i,:], bnds = dom_bounds)
+            loc.append(pos)
+            acq.append(val)
+        loc = np.vstack(loc)
+        acq = np.vstack(acq)
+        idx_best = np.argmin(acq)
+        x_new = loc[idx_best:idx_best+1,:]
+        return x_new, acq, loc
     
 # A minimal GradientGP regression class (inherits from GPmodel)
 class GradientGP(GPmodel):
