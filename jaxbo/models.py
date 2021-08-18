@@ -746,6 +746,39 @@ class ManifoldGP_MultiOutputs(GPmodel):
         return np.array(mu_list), np.array(std_list)
     
     @partial(jit, static_argnums=(0,))
+    def predict(self, X_star, **kwargs):
+        
+        params =  kwargs['params']
+        batch = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const = kwargs['norm_const']
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        
+        # Fetch normalized training data
+        X, y = batch['X'], batch['y']
+        # Warp inputs
+        gp_params = params[self.gp_params_ids]
+        nn_params = self.unravel(params[self.nn_params_ids])
+        X = self.net_apply(nn_params, X)
+        X_star_nn = self.net_apply(nn_params, X_star)
+        # Fetch params
+        sigma_n = np.exp(gp_params[-1])
+        theta = np.exp(gp_params[:-1])
+        # Compute kernels
+        k_pp = self.kernel(X_star_nn, X_star_nn, theta) + np.eye(X_star_nn.shape[0])*(sigma_n + 1e-8)
+        k_pX = self.kernel(X_star_nn, X, theta)
+        L = self.compute_cholesky(params, batch)
+        alpha = solve_triangular(L.T,solve_triangular(L, y, lower=True))
+        beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+        # Compute predictive mean, std
+        mu = np.matmul(k_pX, alpha)
+        cov = k_pp - np.matmul(k_pX, beta)
+        std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+            
+        return mu, std
+    
+    @partial(jit, static_argnums=(0,))
     def constrained_acquisition(self, x, **kwargs):
         x = x[None,:]
         mean, std = self.predict_all(x, **kwargs)
@@ -1144,6 +1177,49 @@ class DeepMultifidelityGP_MultiOutputs(GPmodel):
             std_list.append(std)
             
         return np.array(mu_list), np.array(std_list)
+    
+    @partial(jit, static_argnums=(0,))
+    def predict(self, X_star, **kwargs):
+        params =  kwargs['params']
+        batch = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const = kwargs['norm_const']
+        # Normalize to [0,1]
+        X_star = (X_star - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        
+        # Fetch normalized training data
+        XL, XH = batch['XL'], batch['XH']
+        y = batch['y']
+        gp_params = params[self.gp_params_ids]
+        nn_params = self.unravel(params[self.nn_params_ids])
+        # Warp inputs
+        XL = self.net_apply(nn_params, XL)
+        XH = self.net_apply(nn_params, XH)
+        X_star_nn = self.net_apply(nn_params, X_star)
+        D = XH.shape[1]
+        # Fetch params
+        rho = gp_params[-3]
+        sigma_n_L = np.exp(gp_params[-2])
+        sigma_n_H = np.exp(gp_params[-1])
+        theta_L = np.exp(gp_params[:D+1])
+        theta_H = np.exp(gp_params[D+1:-3])
+        # Compute kernels
+        k_pp = rho**2 * self.kernel(X_star_nn, X_star_nn, theta_L) + \
+                        self.kernel(X_star_nn, X_star_nn, theta_H) + \
+                        np.eye(X_star_nn.shape[0])*(sigma_n_H + 1e-8)
+        psi1 = rho*self.kernel(X_star_nn, XL, theta_L)
+        psi2 = rho**2 * self.kernel(X_star_nn, XH, theta_L) + \
+                        self.kernel(X_star_nn, XH, theta_H)
+        k_pX = np.hstack((psi1,psi2))
+        L = self.compute_cholesky(params, batch)
+        alpha = solve_triangular(L.T,solve_triangular(L, y, lower=True))
+        beta  = solve_triangular(L.T,solve_triangular(L, k_pX.T, lower=True))
+        # Compute predictive mean, std
+        mu = np.matmul(k_pX, alpha)
+        cov = k_pp - np.matmul(k_pX, beta)
+        std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
+            
+        return mu, std
     
     @partial(jit, static_argnums=(0,))
     def constrained_acquisition(self, x, **kwargs):
