@@ -193,12 +193,12 @@ def init_ResNet(layers, depth, is_spect):
             inputs = params[-2]/np.sqrt(np.var(inputs, axis=0))*(inputs-np.mean(inputs, axis=0))+params[-1]
             for i in range(depth):
                 #outputs = mlp(params, inputs) + inputs
-                outputs = mlp(params[:-2], inputs) + inputs
-            return outputs
+                inputs = mlp(params[:-2], inputs) + inputs
+            return inputs
     else:
         def apply(params, inputs):
             for i in range(depth):
-                outputs = mlp(params, inputs) + inputs
-            return outputs
+                inputs = mlp(params, inputs) + inputs
+            return inputs
     return init, apply
 
