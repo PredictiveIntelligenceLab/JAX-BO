@@ -202,3 +202,35 @@ def init_ResNet(layers, depth, is_spect):
             return inputs
     return init, apply
 
+def init_MomentumResNet(layers, depth, vel_zeros=0, gamma=0.9):
+    ''' MLP blocks with residual connections'''
+    def init(rng_key):
+        # Initialize neural net params
+        def init_layer(key, d_in, d_out):
+            k1, k2 = random.split(key)
+            W = random.normal(k1, (d_in, d_out))
+            b = random.normal(k2, (d_out,))
+            return W, b
+        key, *keys = random.split(rng_key, len(layers))
+        params = list(map(init_layer, keys, layers[:-1], layers[1:]))
+        return params
+    def mlp(params, inputs):
+        for W, b in params:
+            outputs = np.dot(inputs, W) + b
+            inputs = np.tanh(outputs)
+        return outputs
+    if vel_zeros == 1:
+        def apply(params, inputs):
+            velocity = np.zeros_like(inputs)
+            for i in range(depth):
+                velocity = gamma*velocity + (1.0-gamma)*mlp(params, inputs)
+                inputs = inputs + velocity
+            return inputs
+    else:
+        def apply(params, inputs):
+            velocity = mlp(params, inputs)
+            for i in range(depth):
+                velocity = gamma*velocity + (1.0-gamma)*mlp(params, inputs)
+                inputs = inputs + velocity
+            return inputs
+    return init, apply
