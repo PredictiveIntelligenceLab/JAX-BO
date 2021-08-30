@@ -932,14 +932,17 @@ class MultifidelityGP(GPmodel):
 # A minimal MultifidelityGP regression class (inherits from GPmodel)
 class DeepMultifidelityGP(GPmodel):
     # Initialize the class
-    def __init__(self, options, layers, depth=2, is_spect=1):
+    def __init__(self, options, layers):
         super().__init__(options)
         self.layers = layers
         if options['net_arch'] == 'MLP':
             self.net_init, self.net_apply = utils.init_NN(layers)
             nn_params = self.net_init(random.PRNGKey(0), (-1, layers[0]))[1]
         if options['net_arch'] == 'ResNet':
-            self.net_init, self.net_apply = utils.init_ResNet(layers,depth,is_spect)
+            self.net_init, self.net_apply = utils.init_ResNet(layers,options['depth'],options['is_spect'])
+            nn_params = self.net_init(random.PRNGKey(0))
+        if options['net_arch'] == 'MomentumResNet':
+            self.net_init, self.net_apply = utils.init_MomentumResNet(layers,options['depth'],options['vel_zeros'],options['gamma'])
             nn_params = self.net_init(random.PRNGKey(0))
         # Determine parameter IDs
         nn_params_flat, self.unravel = ravel_pytree(nn_params)
@@ -991,6 +994,8 @@ class DeepMultifidelityGP(GPmodel):
             if self.options['net_arch'] == 'MLP':
                 nn_params = self.net_init(key2,  (-1, self.layers[0]))[1]
             if self.options['net_arch'] == 'ResNet':
+                nn_params = self.net_init(key2)
+            if self.options['net_arch'] == 'MomentumResNet':
                 nn_params = self.net_init(key2)
             init_params = np.concatenate([gp_params, ravel_pytree(nn_params)[0]])
             p, val = minimize_lbfgs(objective, init_params, verbose, maxfun)
@@ -1051,14 +1056,17 @@ class DeepMultifidelityGP(GPmodel):
 # A minimal DeepMultifidelityGP with Multiple Outputs regression class (inherits from GPmodel)
 class DeepMultifidelityGP_MultiOutputs(GPmodel):
     # Initialize the class
-    def __init__(self, options, layers, depth=2, is_spect=1):
+    def __init__(self, options, layers):
         super().__init__(options)
         self.layers = layers
         if options['net_arch'] == 'MLP':
             self.net_init, self.net_apply = utils.init_NN(layers)
             nn_params = self.net_init(random.PRNGKey(0), (-1, layers[0]))[1]
         if options['net_arch'] == 'ResNet':
-            self.net_init, self.net_apply = utils.init_ResNet(layers,depth,is_spect)
+            self.net_init, self.net_apply = utils.init_ResNet(layers,options['depth'],options['is_spect'])
+            nn_params = self.net_init(random.PRNGKey(0))
+        if options['net_arch'] == 'MomentumResNet':
+            self.net_init, self.net_apply = utils.init_MomentumResNet(layers,options['depth'],options['vel_zeros'],options['gamma'])
             nn_params = self.net_init(random.PRNGKey(0))
         # Determine parameter IDs
         nn_params_flat, self.unravel = ravel_pytree(nn_params)
@@ -1112,6 +1120,8 @@ class DeepMultifidelityGP_MultiOutputs(GPmodel):
                 if self.options['net_arch'] == 'MLP':
                     nn_params = self.net_init(key2,  (-1, self.layers[0]))[1]
                 if self.options['net_arch'] == 'ResNet':
+                    nn_params = self.net_init(key2)
+                if self.options['net_arch'] == 'MomentumResNet':
                     nn_params = self.net_init(key2)
                 init_params = np.concatenate([gp_params, ravel_pytree(nn_params)[0]])
                 p, val = minimize_lbfgs(objective, init_params, verbose, maxfun)
