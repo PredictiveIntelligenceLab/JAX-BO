@@ -124,7 +124,7 @@ def fit_kernel_density(X, xi, weights = None, bw=None):
     if bw is None:
         try:
             sc = gaussian_kde(X, weights=weights)
-            bw = onp.sqrt(sc.covariance).flatten()
+            bw = onp.sqrt(sc.covariance).flatten()[0]
         except:
             bw = 1.0
         if bw < 1e-8:
