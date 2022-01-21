@@ -6,7 +6,7 @@ Get started with a tutorial on Google Colab:
 To cite this repository:
 
     @software{jaxbo2020github,
-    author = {Paris Perdikaris},
+    author = {Paris Perdikaris, Yibo Yang, Mohamed Aziz Bhouri},
     title = {{JAX-BO}: A Bayesian optimization library in {JAX}},
     url = {https://github.com/PredictiveIntelligenceLab/JAX-BO},
     version = {0.2},
