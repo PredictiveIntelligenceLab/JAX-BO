@@ -142,6 +142,14 @@ class GPmodel():
             std =  std * norm_const['sigma_y']
             weights = utils.compute_w_gmm(x, **kwargs)
             return acquisitions.LW_CLSF(mean, std, weights, kappa)
+        elif self.options['criterion'] == 'IMSE':
+            bounds = kwargs['bounds']
+            lb = bounds['lb']
+            ub = bounds['ub']
+            dim = lb.shape[0]
+            X = lb + (ub-lb)*lhs(dim, 10000)
+            _, std = self.predict(X, **kwargs)
+            return acquisitions.IMSE(std)
         else:
             raise NotImplementedError
 
