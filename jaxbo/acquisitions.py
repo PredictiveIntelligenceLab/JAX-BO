@@ -66,3 +66,8 @@ def CLSF(mean, std, kappa = 1.0):
 def LW_CLSF(mean, std, weights, kappa = 1.0):
     acq = np.log(np.abs(mean)+1e-8) - kappa*(np.log(std+1e-8) + np.log(weights+1e-8))
     return acq[0]
+
+@jit
+def IMSE(std):
+    return np.mean(std)
+
