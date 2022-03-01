@@ -143,13 +143,15 @@ class GPmodel():
             weights = utils.compute_w_gmm(x, **kwargs)
             return acquisitions.LW_CLSF(mean, std, weights, kappa)
         elif self.options['criterion'] == 'IMSE':
+            # See Eq. (2.7), https://arxiv.org/pdf/2006.12394.pdf
             bounds = kwargs['bounds']
             lb = bounds['lb']
             ub = bounds['ub']
             dim = lb.shape[0]
-            X = lb + (ub-lb)*lhs(dim, 10000)
-            _, std = self.predict(X, **kwargs)
-            return acquisitions.IMSE(std)
+            xp = lb + (ub-lb)*lhs(dim, 10000)        
+            cov = self.posterior_covariance(x, xp, **kwargs)
+            IMSE = np.mean(cov**2)/std**2
+            return IMSE[0]
         else:
             raise NotImplementedError
 
@@ -264,8 +266,31 @@ class GP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-
         return mu, std
+    
+    @partial(jit, static_argnums=(0,))
+    def posterior_covariance(self, x, xp,  **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const = kwargs['norm_const']
+        # Normalize to [0,1]
+        x = (x - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        xp = (xp - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
+        X, y = batch['X'], batch['y']
+        # Fetch params
+        sigma_n = np.exp(params[-1])
+        theta = np.exp(params[:-1])
+        # Compute kernels
+        k_pp = self.kernel(x, xp, theta)
+        k_pX = self.kernel(x, X, theta)
+        k_Xp = self.kernel(X, xp, theta)
+        L = self.compute_cholesky(params, batch)
+        # Compute covariance
+        beta  = solve_triangular(L.T,solve_triangular(L, k_Xp, lower=True))        
+        cov = k_pp - np.matmul(k_pX, beta)
+        return cov
 
     @partial(jit, static_argnums=(0,))
     def draw_posterior_sample(self, X_star, **kwargs):
@@ -934,8 +959,67 @@ class MultifidelityGP(GPmodel):
         mu = np.matmul(k_pX, alpha)
         cov = k_pp - np.matmul(k_pX, beta)
         std = np.sqrt(np.clip(np.diag(cov), a_min=0.))
-
         return mu, std
+    
+    @partial(jit, static_argnums=(0,))
+    def posterior_covariance(self, x, xp **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const = kwargs['norm_const']
+        # Normalize to [0,1]
+        x = (x - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        xp = (xp - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
+        XL, XH = batch['XL'], batch['XH']
+        D = batch['XH'].shape[1]
+        y = batch['y']
+        # Fetch params
+        rho = params[-3]
+        sigma_n_L = np.exp(params[-2])
+        sigma_n_H = np.exp(params[-1])
+        theta_L = np.exp(params[:D+1])
+        theta_H = np.exp(params[D+1:-3])
+        # Compute kernels
+        k_pp = rho**2 * self.kernel(x, xp, theta_L) + \
+                        self.kernel(x, xp, theta_H)
+        psi1 = rho*self.kernel(x, XL, theta_L)
+        psi2 = rho**2 * self.kernel(x, XH, theta_L) + \
+                        self.kernel(x, XH, theta_H)
+        k_pX = np.hstack((psi1,psi2))
+        psi1 = rho*self.kernel(XL, xp, theta_L)
+        psi2 = rho**2 * self.kernel(XH, xp, theta_L) + \
+                        self.kernel(XH, xp, theta_H)
+        k_Xp = np.hstack((psi1,psi2))
+        L = self.compute_cholesky(params, batch)
+        # Compute predictive mean, std
+        beta  = solve_triangular(L.T,solve_triangular(L, k_Xp, lower=True))
+        cov = k_pp - np.matmul(k_pX, beta)
+        return cov
+    
+    @partial(jit, static_argnums=(0,))
+    def posterior_covariance(self, x, xp,  **kwargs):
+        params = kwargs['params']
+        batch = kwargs['batch']
+        bounds = kwargs['bounds']
+        norm_const = kwargs['norm_const']
+        # Normalize to [0,1]
+        x = (x - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        xp = (xp - bounds['lb'])/(bounds['ub'] - bounds['lb'])
+        # Fetch normalized training data
+        X, y = batch['X'], batch['y']
+        # Fetch params
+        sigma_n = np.exp(params[-1])
+        theta = np.exp(params[:-1])
+        # Compute kernels
+        k_pp = self.kernel(x, xp, theta)
+        k_pX = self.kernel(x, X, theta)
+        k_Xp = self.kernel(X, xp, theta)
+        L = self.compute_cholesky(params, batch)
+        # Compute covariance
+        beta  = solve_triangular(L.T,solve_triangular(L, k_Xp, lower=True))        
+        cov = k_pp - np.matmul(k_pX, beta)
+        return cov
 
 # A minimal MultifidelityGP regression class (inherits from GPmodel)
 class DeepMultifidelityGP(GPmodel):
