@@ -144,11 +144,12 @@ class GPmodel():
             return acquisitions.LW_CLSF(mean, std, weights, kappa)
         elif self.options['criterion'] == 'IMSE':
             # See Eq. (2.7), https://arxiv.org/pdf/2006.12394.pdf
+            rng_key = kwargs['rng_key']
             bounds = kwargs['bounds']
             lb = bounds['lb']
             ub = bounds['ub']
             dim = lb.shape[0]
-            xp = lb + (ub-lb)*lhs(dim, 10000)        
+            xp = lb + (ub-lb)*random.uniform(rng_key, (10000,dim))    
             cov = self.posterior_covariance(x, xp, **kwargs)
             IMSE = np.mean(cov**2)/std**2
             return IMSE[0]
