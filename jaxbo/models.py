@@ -1007,7 +1007,7 @@ class MultifidelityGP(GPmodel):
         return mu, std
     
     @partial(jit, static_argnums=(0,))
-    def posterior_covariance_L(self, x, xp **kwargs):
+    def posterior_covariance_L(self, x, xp, **kwargs):
         params = kwargs['params']
         batch = kwargs['batch']
         bounds = kwargs['bounds']
